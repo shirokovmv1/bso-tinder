@@ -68,3 +68,15 @@ body {
 .safe-bottom {
   padding-bottom: env(safe-area-inset-bottom, 16px);
 }
+
+.scrollbar-none {
+  scrollbar-width: none;
+}
+.scrollbar-none::-webkit-scrollbar {
+  display: none;
+}
+
+@keyframes shimmer {
+  0%   { transform: translateX(-100%); }
+  100% { transform: translateX(200%); }
+}
