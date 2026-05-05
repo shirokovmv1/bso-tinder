@@ -1,8 +1,8 @@
 import { useEffect, useState, useCallback } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { api, type ApiUser, type ApiDepartment, type ApiHobby, type ApiReactionType } from '@/api/client'
+import { api, type ApiUser, type ApiDepartment, type ApiHobby, type ApiReactionType, type ApiLlmSettings } from '@/api/client'
 
-type Tab = 'users' | 'logs' | 'smtp' | 'refs'
+type Tab = 'users' | 'logs' | 'smtp' | 'refs' | 'ai'
 type RefsSection = 'departments' | 'hobbies' | 'reactions'
 
 // ── иконки ──────────────────────────────────────────────────────────────────
@@ -770,12 +770,180 @@ function RefsTab() {
   )
 }
 
+// ── вкладка "AI" ─────────────────────────────────────────────────────────────
+const PROVIDER_DEFAULTS: Record<string, { label: string; baseUrlHint: string }> = {
+  anthropic: { label: 'Anthropic (Claude)',   baseUrlHint: 'http://151.245.137.147:9000' },
+  openai:    { label: 'OpenAI (GPT)',          baseUrlHint: 'http://151.245.137.147:9001' },
+  google:    { label: 'Google (Gemini)',        baseUrlHint: '' },
+  cursor:    { label: 'Cursor API',            baseUrlHint: 'https://api.cursor.sh' },
+}
+
+function AiTab() {
+  const [provider, setProvider]   = useState('anthropic')
+  const [apiKey,   setApiKey]     = useState('')
+  const [baseUrl,  setBaseUrl]    = useState('')
+  const [model,    setModel]      = useState('')
+  const [models,   setModels]     = useState<string[]>([])
+  const [showKey,  setShowKey]    = useState(false)
+  const [loading,  setLoading]    = useState(true)
+  const [fetching, setFetching]   = useState(false)
+  const [saving,   setSaving]     = useState(false)
+  const [toast,    setToast]      = useState<string | null>(null)
+
+  useEffect(() => {
+    api.adminGetLlmSettings().then(s => {
+      if (s.llm_provider) setProvider(s.llm_provider)
+      if (s.llm_base_url) setBaseUrl(s.llm_base_url)
+      if (s.llm_model)    setModel(s.llm_model)
+    }).catch(() => {}).finally(() => setLoading(false))
+  }, [])
+
+  const handleProviderChange = (p: string) => {
+    setProvider(p)
+    setModels([])
+    setBaseUrl(PROVIDER_DEFAULTS[p]?.baseUrlHint ?? '')
+  }
+
+  const handleLoadModels = async () => {
+    setFetching(true)
+    try {
+      const res = await api.adminGetLlmModels()
+      setModels(res.models)
+      if (res.models.length === 0) setToast('Провайдер вернул пустой список')
+      else setToast(`Загружено ${res.models.length} моделей`)
+    } catch (e: unknown) {
+      setToast((e as Error).message)
+    } finally { setFetching(false) }
+  }
+
+  const handleSave = async () => {
+    setSaving(true)
+    try {
+      const payload: Partial<import('@/api/client').ApiLlmSettings> = {
+        llm_provider: provider,
+        llm_model:    model,
+        llm_base_url: baseUrl || undefined,
+      }
+      if (apiKey) payload.llm_api_key = apiKey
+      await api.adminSetLlmSettings(payload)
+      setApiKey('')
+      setToast('Настройки сохранены')
+    } catch (e: unknown) {
+      setToast((e as Error).message)
+    } finally { setSaving(false) }
+  }
+
+  const fieldStyle = {
+    background: 'rgba(255,255,255,0.06)',
+    border: '1px solid rgba(255,255,255,0.10)',
+    color: 'var(--fg-1)',
+  }
+  const labelStyle = { color: 'var(--fg-3)', fontSize: '11px', fontWeight: 700, textTransform: 'uppercase' as const, letterSpacing: '0.07em' }
+
+  if (loading) return <div className="py-8 text-center text-sm" style={{ color: 'var(--fg-3)' }}>Загрузка...</div>
+
+  return (
+    <div className="flex flex-col gap-4">
+      <div>
+        <div style={labelStyle} className="mb-1">Провайдер</div>
+        <select
+          value={provider}
+          onChange={e => handleProviderChange(e.target.value)}
+          className="w-full px-3 py-2 rounded-lg text-sm outline-none"
+          style={fieldStyle}
+        >
+          {Object.entries(PROVIDER_DEFAULTS).map(([k, v]) => (
+            <option key={k} value={k} style={{ background: '#2d2d2d' }}>{v.label}</option>
+          ))}
+        </select>
+      </div>
+
+      <div>
+        <div style={labelStyle} className="mb-1">API ключ</div>
+        <div className="flex gap-2">
+          <input
+            type={showKey ? 'text' : 'password'}
+            value={apiKey}
+            onChange={e => setApiKey(e.target.value)}
+            placeholder="Оставьте пустым, чтобы не менять"
+            className="flex-1 px-3 py-2 rounded-lg text-sm outline-none"
+            style={fieldStyle}
+          />
+          <button
+            onClick={() => setShowKey(s => !s)}
+            className="px-3 py-2 rounded-lg text-xs"
+            style={{ ...fieldStyle, flexShrink: 0 }}
+          >
+            {showKey ? '🙈' : '👁'}
+          </button>
+        </div>
+      </div>
+
+      <div>
+        <div style={labelStyle} className="mb-1">
+          Base URL <span style={{ color: 'var(--fg-3)', fontWeight: 400, textTransform: 'none' }}>(прокси, если нужен)</span>
+        </div>
+        <input
+          type="text"
+          value={baseUrl}
+          onChange={e => setBaseUrl(e.target.value)}
+          placeholder={PROVIDER_DEFAULTS[provider]?.baseUrlHint || 'https://...'}
+          className="w-full px-3 py-2 rounded-lg text-sm outline-none"
+          style={fieldStyle}
+        />
+      </div>
+
+      <div>
+        <div style={labelStyle} className="mb-1">Модель</div>
+        <div className="flex gap-2">
+          <input
+            list="llm-models-list"
+            value={model}
+            onChange={e => setModel(e.target.value)}
+            placeholder="Введите или загрузите список"
+            className="flex-1 px-3 py-2 rounded-lg text-sm outline-none"
+            style={fieldStyle}
+          />
+          <datalist id="llm-models-list">
+            {models.map(m => <option key={m} value={m} />)}
+          </datalist>
+          <button
+            onClick={handleLoadModels}
+            disabled={fetching}
+            className="px-3 py-2 rounded-lg text-xs font-medium disabled:opacity-50 flex-shrink-0"
+            style={{ background: 'rgba(255,255,255,0.08)', color: 'var(--fg-1)', border: '1px solid rgba(255,255,255,0.12)' }}
+          >
+            {fetching ? '...' : '🔄'}
+          </button>
+        </div>
+        {models.length > 0 && (
+          <div className="text-xs mt-1" style={{ color: 'var(--fg-3)' }}>Загружено {models.length} моделей</div>
+        )}
+      </div>
+
+      <button
+        onClick={handleSave}
+        disabled={saving || !model}
+        className="w-full py-2.5 rounded-xl text-sm font-bold transition-opacity disabled:opacity-40"
+        style={{ background: 'var(--brand-orange)', color: '#fff' }}
+      >
+        {saving ? 'Сохраняем...' : 'Сохранить настройки'}
+      </button>
+
+      <AnimatePresence>
+        {toast && <Toast message={toast} onDone={() => setToast(null)} />}
+      </AnimatePresence>
+    </div>
+  )
+}
+
 // ── главный компонент ────────────────────────────────────────────────────────
 const TABS: { id: Tab; label: string }[] = [
   { id: 'users', label: 'Пользователи' },
   { id: 'logs',  label: 'Логи' },
   { id: 'smtp',  label: 'SMTP' },
   { id: 'refs',  label: 'Справочники' },
+  { id: 'ai',    label: 'AI' },
 ]
 
 export default function AdminPage() {
@@ -812,6 +980,7 @@ export default function AdminPage() {
             {activeTab === 'logs'  && <LogsTab />}
             {activeTab === 'smtp'  && <SmtpTab />}
             {activeTab === 'refs'  && <RefsTab />}
+            {activeTab === 'ai'    && <AiTab />}
           </AnimatePresence>
         </motion.div>
 

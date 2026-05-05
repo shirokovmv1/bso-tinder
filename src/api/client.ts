@@ -95,6 +95,14 @@ export const api = {
     request<ApiReactionType>(`/admin/reaction-types/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
   adminDeleteReactionType: (id: string) =>
     request<{ success: boolean }>(`/admin/reaction-types/${id}`, { method: 'DELETE' }),
+
+  // ── Admin: LLM настройки ──────────────────────────────────────────────────
+  adminGetLlmSettings: () =>
+    request<ApiLlmSettings>('/admin/settings/llm'),
+  adminSetLlmSettings: (data: Partial<ApiLlmSettings>) =>
+    request<{ success: boolean }>('/admin/settings/llm', { method: 'PUT', body: JSON.stringify(data) }),
+  adminGetLlmModels: () =>
+    request<{ provider: string; models: string[] }>('/admin/settings/llm/models'),
 }
 
 // ── Типы API-ответов ─────────────────────────────────────────────────────────
@@ -142,6 +150,13 @@ export interface ApiUser {
   badge_title?: string
   badge_emoji?: string
   badge_reason?: string
+}
+
+export interface ApiLlmSettings {
+  llm_provider: string   // 'openai' | 'anthropic' | 'custom'
+  llm_api_key: string    // masked on GET
+  llm_model: string
+  llm_base_url?: string  // для custom-провайдеров
 }
 
 export interface ApiMatchResult {

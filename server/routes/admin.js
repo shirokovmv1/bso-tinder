@@ -385,4 +385,109 @@ router.delete('/reaction-types/:id', verifyAdmin, (req, res) => {
   res.json({ success: true })
 })
 
+// ════════════════════════════════════════════════════════════════════════════
+// LLM / AI настройки
+// ════════════════════════════════════════════════════════════════════════════
+
+const LLM_KEYS = ['llm_provider', 'llm_api_key', 'llm_model', 'llm_base_url']
+
+// GET /api/admin/settings/llm
+router.get('/settings/llm', verifyAdmin, (req, res) => {
+  const rows = db.prepare("SELECT key, value FROM settings WHERE key LIKE 'llm_%'").all()
+  const settings = Object.fromEntries(
+    rows.map(r => [r.key, r.key === 'llm_api_key' ? '••••••••' : r.value])
+  )
+  res.json(settings)
+})
+
+// PUT /api/admin/settings/llm
+router.put('/settings/llm', verifyAdmin, (req, res) => {
+  const upsert = db.prepare(
+    "INSERT OR REPLACE INTO settings (key, value, updated_at) VALUES (?, ?, datetime('now'))"
+  )
+  db.transaction((data) => {
+    for (const [k, v] of Object.entries(data)) {
+      if (LLM_KEYS.includes(k) && v !== undefined && v !== null) upsert.run(k, String(v))
+    }
+  })(req.body)
+  logger.info('LLM settings updated', { provider: req.body.llm_provider, model: req.body.llm_model, by: req.user.id })
+  res.json({ success: true })
+})
+
+// GET /api/admin/settings/llm/models — динамически загружает список моделей от провайдера
+router.get('/settings/llm/models', verifyAdmin, async (req, res) => {
+  const rows = db.prepare("SELECT key, value FROM settings WHERE key LIKE 'llm_%'").all()
+  const cfg = Object.fromEntries(rows.map(r => [r.key, r.value]))
+
+  const provider = cfg.llm_provider || 'openai'
+  const apiKey   = cfg.llm_api_key
+  const baseUrl  = cfg.llm_base_url?.replace(/\/$/, '')
+
+  if (!apiKey || apiKey === '••••••••') {
+    return res.status(400).json({ error: 'API-ключ не задан. Сохраните настройки.' })
+  }
+
+  try {
+    let models = []
+
+    if (provider === 'anthropic') {
+      const url = baseUrl ? `${baseUrl}/v1/models` : 'https://api.anthropic.com/v1/models'
+      const r = await fetch(url, {
+        headers: { 'x-api-key': apiKey, 'anthropic-version': '2023-06-01' },
+      })
+      if (!r.ok) {
+        const err = await r.json().catch(() => ({}))
+        return res.status(r.status).json({ error: err.error?.message || `Anthropic error ${r.status}` })
+      }
+      const data = await r.json()
+      models = (data.data || []).map(m => m.id).filter(id => id.startsWith('claude')).sort()
+
+    } else if (provider === 'openai') {
+      const url = baseUrl ? `${baseUrl}/v1/models` : 'https://api.openai.com/v1/models'
+      const r = await fetch(url, { headers: { 'Authorization': `Bearer ${apiKey}` } })
+      if (!r.ok) {
+        const err = await r.json().catch(() => ({}))
+        return res.status(r.status).json({ error: err.error?.message || `OpenAI error ${r.status}` })
+      }
+      const data = await r.json()
+      models = (data.data || [])
+        .map(m => m.id)
+        .filter(id => /^(gpt-|o1|o3|o4)/.test(id))
+        .sort()
+
+    } else if (provider === 'google') {
+      const base = baseUrl || 'https://generativelanguage.googleapis.com'
+      const url = `${base}/v1beta/models?key=${apiKey}`
+      const r = await fetch(url)
+      if (!r.ok) {
+        const err = await r.json().catch(() => ({}))
+        return res.status(r.status).json({ error: err.error?.message || `Google error ${r.status}` })
+      }
+      const data = await r.json()
+      models = (data.models || [])
+        .map(m => m.name.replace(/^models\//, ''))
+        .filter(id => id.startsWith('gemini'))
+        .sort()
+
+    } else {
+      // cursor или custom — OpenAI-совместимый
+      const url = baseUrl ? `${baseUrl}/v1/models` : 'https://api.cursor.sh/v1/models'
+      const r = await fetch(url, { headers: { 'Authorization': `Bearer ${apiKey}` } })
+      if (!r.ok) {
+        const err = await r.json().catch(() => ({}))
+        return res.status(r.status).json({ error: err.error?.message || `API error ${r.status}` })
+      }
+      const data = await r.json()
+      models = (data.data || []).map(m => m.id).sort()
+    }
+
+    logger.info('LLM models loaded', { provider, count: models.length, by: req.user.id })
+    res.json({ provider, models })
+
+  } catch (e) {
+    logger.error('LLM models fetch failed', { error: e.message })
+    res.status(502).json({ error: `Не удалось подключиться к провайдеру: ${e.message}` })
+  }
+})
+
 module.exports = router

@@ -3,6 +3,7 @@ const router = express.Router()
 const { verifyJWT } = require('../middleware/auth')
 const db = require('../db')
 const logger = require('../logger')
+const ai = require('../ai')
 
 // Поля хобби для JOIN-запросов
 const HOBBY_FIELDS = 'h.id, h.parent_id, h.label, h.emoji, h.sort_order, h.is_active'
@@ -70,11 +71,12 @@ router.get('/:id', verifyJWT, (req, res) => {
 })
 
 // PUT /api/users/:id — онбординг / обновление профиля
-router.put('/:id', verifyJWT, (req, res) => {
+router.put('/:id', verifyJWT, async (req, res) => {
   if (req.params.id !== req.user.id) {
     return res.status(403).json({ error: 'Можно редактировать только свой профиль' })
   }
 
+  const existing = db.prepare('SELECT onboarding_done FROM users WHERE id = ?').get(req.user.id)
   const { name, department, avatarUrl, badgeId, hobbyIds, gender, experience_months } = req.body
 
   if (name !== undefined || department !== undefined || avatarUrl !== undefined ||
@@ -110,6 +112,26 @@ router.put('/:id', verifyJWT, (req, res) => {
   }
 
   const updated = db.prepare('SELECT * FROM users WHERE id = ?').get(req.user.id)
+
+  // Генерируем AI-питч при первом завершении онбординга
+  if (updated.onboarding_done && !existing?.onboarding_done) {
+    const hobbies = db.prepare(
+      'SELECT h.label FROM user_hobbies uh JOIN hobbies h ON h.id = uh.hobby_id WHERE uh.user_id = ?'
+    ).all(req.user.id).map(h => h.label)
+
+    ai.generatePitch({
+      department: updated.department,
+      experienceMonths: updated.experience_months,
+      hobbies,
+    }).then(result => {
+      if (!result) return
+      db.prepare(
+        'UPDATE users SET pitch=?, badge_title=?, badge_emoji=?, badge_reason=? WHERE id=?'
+      ).run(result.pitch, result.badge_title, result.badge_emoji, result.badge_reason, req.user.id)
+      logger.info('AI pitch saved', { userId: req.user.id })
+    }).catch(e => logger.error('AI pitch save failed', { error: e.message }))
+  }
+
   logger.info('User profile updated', { userId: req.user.id })
   res.json({ ...updated, hobbies: getUserHobbies(req.user.id) })
 })
