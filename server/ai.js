@@ -107,4 +107,101 @@ async function generatePitch({ department, experienceMonths, hobbies }) {
   }
 }
 
-module.exports = { generatePitch }
+// ── Шаблонная генерация без внешнего API ────────────────────────────────────
+
+const TECH_KW     = ['код', 'dev', 'python', 'js', 'программ', 'git', 'api', 'linux', 'ai', 'ml', 'data', 'c++', 'java', 'sql', 'backend', 'frontend']
+const SOCIAL_KW   = ['вечеринк', 'общени', 'тусов', 'нетворк', 'team', 'люди', 'волонтёр', 'благотвор']
+const SPORT_KW    = ['спорт', 'бег', 'йога', 'фитнес', 'тренаж', 'плавани', 'велосип', 'футбол', 'баскетбол', 'волейбол', 'хоккей', 'теннис']
+const TRAVEL_KW   = ['путешест', 'поход', 'горы', 'туризм', 'город', 'страны', 'море', 'экспедиц']
+const CREATIVE_KW = ['рисов', 'фото', 'музык', 'кино', 'дизайн', 'art', 'писател', 'поэзи', 'скульптур', 'шитьё', 'рукоделие']
+
+function matchKw(hobbies, keywords) {
+  const joined = hobbies.join(' ').toLowerCase()
+  return keywords.some(kw => joined.includes(kw))
+}
+
+function pickRandom(arr) {
+  return arr[Math.floor(Math.random() * arr.length)]
+}
+
+function generatePitchAndBadge({ gender, experienceMonths, department, hobbies } = {}) {
+  const dept      = department || 'компании'
+  const exp       = typeof experienceMonths === 'number' ? experienceMonths : (parseInt(experienceMonths) || null)
+  const hobbyArr  = Array.isArray(hobbies) ? hobbies : []
+  const h1        = hobbyArr[0] || 'разные интересы'
+  const h2        = hobbyArr[1] || hobbyArr[0] || 'активный отдых'
+  const expStr    = exp != null ? `${exp} мес.` : 'неизвестный'
+  const pronoun   = gender === 'f' ? 'Она' : gender === 'm' ? 'Он' : 'Этот специалист'
+  const came      = gender === 'f' ? 'пришла' : 'пришёл'
+  const stood     = gender === 'f' ? 'выделилась' : 'выделился'
+
+  const pitchTemplates = [
+    () => `${pronoun} работает в ${dept} и сочетает профессионализм с живыми интересами — ${h1} и ${h2}.`,
+    () => `Специалист из ${dept} со стажем ${expStr}. За работой ценит результат, вне работы — ${h1}.`,
+    () => `${pronoun} из ${dept} — из тех, кто умеет совмещать дело и страсть. Увлекается ${h1} и ${h2}.`,
+    () => `Коллега из ${dept}. За плечами — ${expStr} опыта и живой интерес к ${h1}.`,
+    () => `${pronoun} ${came} в команду ${dept} и сразу ${stood}: ${h1}, ${h2} — вот чем живёт вне работы.`,
+    () => `В ${dept} знают: если нужен человек с головой и характером — это ${pronoun.toLowerCase()}. А в свободное время — ${h1}.`,
+    () => `Стаж в ${dept}: ${expStr}. Помимо работы увлекается ${h1} — говорит, это помогает думать иначе.`,
+    () => `${pronoun} из ${dept} убеждён(а): лучший способ развиваться — совмещать ${h1} и постоянное обучение.`,
+    () => `Энергичный коллега из ${dept}. ${h1} и ${h2} — источники вдохновения, которые чувствуются в работе.`,
+    () => `${pronoun} нашёл(а) баланс между профессиональным ростом в ${dept} и любимыми занятиями: ${h1}, ${h2}.`,
+  ]
+
+  const pitch = pickRandom(pitchTemplates)()
+
+  // Определяем профиль по хобби
+  const isTech     = matchKw(hobbyArr, TECH_KW)
+  const isSocial   = matchKw(hobbyArr, SOCIAL_KW)
+  const isSport    = matchKw(hobbyArr, SPORT_KW)
+  const isTravel   = matchKw(hobbyArr, TRAVEL_KW)
+  const isCreative = matchKw(hobbyArr, CREATIVE_KW)
+
+  let badge_emoji, badge_title, badge_reason
+
+  if (isTech && exp != null && exp >= 36) {
+    badge_emoji  = '🧙'
+    badge_title  = 'Технический гуру'
+    badge_reason = 'Глубокая экспертиза и страсть к технологиям.'
+  } else if (isTech && exp != null && exp < 12) {
+    badge_emoji  = '⚡'
+    badge_title  = 'Цифровой новичок'
+    badge_reason = 'Быстро учится и горит идеями.'
+  } else if (isTech) {
+    badge_emoji  = '💻'
+    badge_title  = 'Цифровой боец'
+    badge_reason = 'Технологии — родная стихия.'
+  } else if (exp != null && exp >= 60) {
+    badge_emoji  = '🌟'
+    badge_title  = 'Ветеран команды'
+    badge_reason = 'Знает, как здесь всё устроено, и готов помочь.'
+  } else if (exp != null && exp < 6) {
+    badge_emoji  = '🌱'
+    badge_title  = 'Энерджайзер'
+    badge_reason = 'Свежий взгляд — ценный ресурс для команды.'
+  } else if (isSocial) {
+    badge_emoji  = '🎭'
+    badge_title  = 'Душа офиса'
+    badge_reason = 'Умеет собрать людей вокруг себя.'
+  } else if (isSport) {
+    badge_emoji  = '🏃'
+    badge_title  = 'Движение — жизнь'
+    badge_reason = 'Энергии хватит на всю команду.'
+  } else if (isTravel) {
+    badge_emoji  = '🗺️'
+    badge_title  = 'Искатель приключений'
+    badge_reason = 'Мир — лучший учебник.'
+  } else if (isCreative) {
+    badge_emoji  = '🎨'
+    badge_title  = 'Творческий дух'
+    badge_reason = 'Видит мир иначе и привносит свежие идеи.'
+  } else {
+    badge_emoji  = '✨'
+    badge_title  = 'Универсальный боец'
+    badge_reason = 'Разносторонний, открытый, всегда готов к новому.'
+  }
+
+  return { pitch, badge_title, badge_emoji, badge_reason }
+}
+
+module.exports = { generatePitch, generatePitchAndBadge }

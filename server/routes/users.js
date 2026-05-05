@@ -124,11 +124,18 @@ router.put('/:id', verifyJWT, async (req, res) => {
       experienceMonths: updated.experience_months,
       hobbies,
     }).then(result => {
-      if (!result) return
+      // Если LLM не настроен или упал — используем template-fallback
+      const final = result ?? ai.generatePitchAndBadge({
+        gender: updated.gender,
+        experienceMonths: updated.experience_months,
+        department: updated.department,
+        hobbies,
+      })
+      if (!final) return
       db.prepare(
         'UPDATE users SET pitch=?, badge_title=?, badge_emoji=?, badge_reason=? WHERE id=?'
-      ).run(result.pitch, result.badge_title, result.badge_emoji, result.badge_reason, req.user.id)
-      logger.info('AI pitch saved', { userId: req.user.id })
+      ).run(final.pitch, final.badge_title, final.badge_emoji, final.badge_reason, req.user.id)
+      logger.info('pitch saved', { userId: req.user.id, source: result ? 'llm' : 'template' })
     }).catch(e => logger.error('AI pitch save failed', { error: e.message }))
   }
 
