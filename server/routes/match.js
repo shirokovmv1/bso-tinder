@@ -29,10 +29,12 @@ function computeMatch(aHobbies, bHobbies) {
   const shared = aHobbies.filter(h => bIds.has(h.id))
 
   const base = shared.length / Math.max(aHobbies.length, bHobbies.length) * 60
-  const aCats = new Set(aHobbies.map(h => h.category))
-  const bCats = new Set(bHobbies.map(h => h.category))
+
+  // Бонус по категориям через parent_id (только для дочерних хобби)
+  const aParents = new Set(aHobbies.map(h => h.parent_id).filter(Boolean))
+  const bParents = new Set(bHobbies.map(h => h.parent_id).filter(Boolean))
   let catBonus = 0
-  aCats.forEach(c => { if (bCats.has(c)) catBonus += 10 })
+  aParents.forEach(p => { if (bParents.has(p)) catBonus += 10 })
 
   const score = Math.min(100, Math.round(base + catBonus))
   const tier = score >= 60 ? 'high' : score >= 30 ? 'medium' : 'low'
@@ -49,18 +51,21 @@ function computeMatch(aHobbies, bHobbies) {
   }
 }
 
+function getHobbies(uid) {
+  return db.prepare(`
+    SELECT h.id, h.parent_id, h.label, h.emoji
+    FROM user_hobbies uh
+    JOIN hobbies h ON h.id = uh.hobby_id
+    WHERE uh.user_id = ?
+  `).all(uid)
+}
+
 // POST /api/match
 router.post('/', verifyJWT, (req, res) => {
   const { userAId, userBId } = req.body
   if (!userAId || !userBId || userAId === userBId) {
     return res.status(400).json({ error: 'Передайте два разных ID пользователей' })
   }
-
-  const getHobbies = (uid) => db.prepare(`
-    SELECT h.id, h.label, h.emoji, h.category
-    FROM user_hobbies uh JOIN hobbies h ON h.id = uh.hobby_id
-    WHERE uh.user_id = ?
-  `).all(uid)
 
   const userA = db.prepare('SELECT id, name FROM users WHERE id = ? AND is_banned = 0').get(userAId)
   const userB = db.prepare('SELECT id, name FROM users WHERE id = ? AND is_banned = 0').get(userBId)
@@ -83,7 +88,8 @@ router.post('/', verifyJWT, (req, res) => {
   db.prepare(`
     INSERT INTO matches (id, user_a_id, user_b_id, score, icebreaker, shared_hobby_ids)
     VALUES (?, ?, ?, ?, ?, ?)
-  `).run(matchId, userAId, userBId, result.score, result.icebreaker, JSON.stringify(result.shared.map(h => h.id)))
+  `).run(matchId, userAId, userBId, result.score, result.icebreaker,
+         JSON.stringify(result.shared.map(h => h.id)))
 
   logger.info('Match computed', { matchId, userAId, userBId, score: result.score })
 

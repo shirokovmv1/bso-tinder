@@ -29,6 +29,15 @@ app.use('/api/users', require('./routes/users'))
 app.use('/api/match', require('./routes/match'))
 app.use('/api/admin', require('./routes/admin'))
 
+// Публичный справочник отделов (для онбординга)
+const { verifyJWT } = require('./middleware/auth')
+const db = require('./db')
+app.get('/api/departments', verifyJWT, (_req, res) => {
+  res.json(db.prepare(
+    'SELECT id, name, sort_order, is_active FROM departments WHERE is_active = 1 ORDER BY sort_order, name'
+  ).all())
+})
+
 // Health-check
 app.get('/api/health', (_req, res) => res.json({ status: 'ok', env: NODE_ENV }))
 
