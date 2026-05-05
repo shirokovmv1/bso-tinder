@@ -2,8 +2,6 @@ import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 import type { ApiUser, ApiHobby, ApiMatchResult } from '@/api/client'
 
-export type Department = 'Логистика' | 'Стройка' | 'IT' | 'Финансы' | 'HR'
-
 interface AppState {
   // Auth
   token: string | null
@@ -20,7 +18,7 @@ interface AppState {
   // Лента
   employees: ApiUser[]
   searchQuery: string
-  departmentFilter: Department | 'Все'
+  departmentFilter: string
 
   // Мэтчинг
   matchCandidates: [ApiUser | null, ApiUser | null]
@@ -41,7 +39,7 @@ interface AppState {
   // Экшены — лента
   setEmployees: (list: ApiUser[]) => void
   setSearchQuery: (q: string) => void
-  setDepartmentFilter: (dept: Department | 'Все') => void
+  setDepartmentFilter: (dept: string) => void
 
   // Экшены — мэтчинг
   setMatchCandidate: (slot: 0 | 1, user: ApiUser | null) => void

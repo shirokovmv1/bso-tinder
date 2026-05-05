@@ -1,17 +1,16 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
-import { api, type ApiHobby } from '@/api/client'
+import { api, type ApiHobby, type ApiDepartment } from '@/api/client'
 import { useAppStore } from '@/store/useAppStore'
 import { assignBadge } from '@/data/badges'
 
 type Step = 1 | 2 | 3
 
-const DEPTS = ['Логистика', 'Стройка', 'IT', 'Финансы', 'HR']
-
 export default function OnboardingPage() {
   const [step, setStep] = useState<Step>(1)
   const [allHobbies, setAllHobbies] = useState<ApiHobby[]>([])
+  const [departments, setDepartments] = useState<ApiDepartment[]>([])
   const [saving, setSaving] = useState(false)
 
   const { nameInput, departmentInput, photoUrl, selectedHobbies,
@@ -19,7 +18,9 @@ export default function OnboardingPage() {
   const MIN = 5
 
   useEffect(() => {
-    api.getHobbies().then(setAllHobbies).catch(() => {})
+    // Только дочерние хобби (parent_id != null) показываем для выбора
+    api.getHobbies().then(h => setAllHobbies(h.filter(x => x.parent_id !== null))).catch(() => {})
+    api.getDepartments().then(setDepartments).catch(() => {})
   }, [])
 
   function onFile(e: React.ChangeEvent<HTMLInputElement>) {
@@ -35,7 +36,7 @@ export default function OnboardingPage() {
     setSaving(true)
     try {
       const hobbyIds = selectedHobbies.map(h => h.id)
-      const badge = assignBadge(selectedHobbies as Parameters<typeof assignBadge>[0])
+      const badge = assignBadge(selectedHobbies)
       const updated = await api.updateMe(currentUser.id, {
         name: nameInput.trim(),
         department: departmentInput,
@@ -96,7 +97,9 @@ export default function OnboardingPage() {
                       className="w-full bg-transparent outline-none text-white text-[15px] font-bold appearance-none"
                     >
                       <option value="" disabled className="bg-graphite-900">Выберите отдел</option>
-                      {DEPTS.map(d => <option key={d} value={d} className="bg-graphite-900">{d}</option>)}
+                      {departments.map(d => (
+                        <option key={d.id} value={d.name} className="bg-graphite-900">{d.name}</option>
+                      ))}
                     </select>
                   </div>
                 </div>
@@ -139,7 +142,7 @@ export default function OnboardingPage() {
 
           {step === 3 && (
             <motion.div key="s3" initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }} className="flex flex-col items-center pt-8">
-              <BadgeReveal userId={currentUser?.id} name={currentUser?.name} />
+              <BadgeReveal />
             </motion.div>
           )}
         </AnimatePresence>
@@ -174,22 +177,22 @@ export default function OnboardingPage() {
   )
 }
 
-function BadgeReveal({ userId: _userId, name: _name }: { userId?: string; name?: string | null }) {
+function BadgeReveal() {
   const navigate = useNavigate()
   const currentUser = useAppStore(s => s.currentUser)
   const badgeId = currentUser?.badge_id ?? 'allrounder'
 
   const BADGES: Record<string, { emoji: string; title: string; desc: string; color: string }> = {
-    team_player:    { emoji: '🏆', title: 'Командный игрок',      desc: 'Всегда в центре событий!',        color: '#FF6B00' },
-    digital_artist: { emoji: '🎨', title: 'Цифровой художник',    desc: 'Код и краски — твоя стихия.',      color: '#9B59B6' },
-    wild_tracker:   { emoji: '🌲', title: 'Дикий следопыт',       desc: 'Лес, горы, свобода.',              color: '#27AE60' },
-    life_of_party:  { emoji: '🎭', title: 'Душа компании',        desc: 'Без тебя не праздник!',            color: '#E74C3C' },
-    eco_hacker:     { emoji: '🌿', title: 'Эко-хакер',            desc: 'Технологии на службе природы.',    color: '#16A085' },
-    cybersportsman: { emoji: '⚡', title: 'Киберспортсмен',       desc: 'Быстрее. Выше. Сильнее.',          color: '#2980B9' },
-    explorer:       { emoji: '🗺️', title: 'Путешественник',      desc: 'Мир — твоя площадка.',            color: '#F39C12' },
-    romantic:       { emoji: '🌸', title: 'Романтик',             desc: 'Красота в каждом моменте.',        color: '#E91E63' },
-    networker:      { emoji: '🔗', title: 'Сетевик',              desc: 'Связи решают всё.',                color: '#3498DB' },
-    allrounder:     { emoji: '✨', title: 'Разносторонняя личность', desc: 'Везде свой, всё умеешь!',       color: '#8E44AD' },
+    team_player:    { emoji: '🏆', title: 'Командный игрок',         desc: 'Всегда в центре событий!',        color: '#FF6B00' },
+    digital_artist: { emoji: '🎨', title: 'Цифровой художник',       desc: 'Код и краски — твоя стихия.',      color: '#9B59B6' },
+    wild_tracker:   { emoji: '🌲', title: 'Дикий следопыт',          desc: 'Лес, горы, свобода.',              color: '#27AE60' },
+    life_of_party:  { emoji: '🎭', title: 'Душа компании',           desc: 'Без тебя не праздник!',            color: '#E74C3C' },
+    eco_hacker:     { emoji: '🌿', title: 'Эко-хакер',               desc: 'Технологии на службе природы.',    color: '#16A085' },
+    cybersportsman: { emoji: '⚡', title: 'Киберспортсмен',          desc: 'Быстрее. Выше. Сильнее.',          color: '#2980B9' },
+    explorer:       { emoji: '🗺️', title: 'Путешественник',         desc: 'Мир — твоя площадка.',            color: '#F39C12' },
+    romantic:       { emoji: '🌸', title: 'Романтик',                desc: 'Красота в каждом моменте.',        color: '#E91E63' },
+    networker:      { emoji: '🔗', title: 'Сетевик',                 desc: 'Связи решают всё.',                color: '#3498DB' },
+    allrounder:     { emoji: '✨', title: 'Разносторонняя личность',  desc: 'Везде свой, всё умеешь!',          color: '#8E44AD' },
   }
   const badge = BADGES[badgeId] ?? BADGES.allrounder
 

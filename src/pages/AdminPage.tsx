@@ -1,8 +1,9 @@
 import { useEffect, useState, useCallback } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { api, type ApiUser } from '@/api/client'
+import { api, type ApiUser, type ApiDepartment, type ApiHobby, type ApiReactionType } from '@/api/client'
 
-type Tab = 'users' | 'logs' | 'smtp'
+type Tab = 'users' | 'logs' | 'smtp' | 'refs'
+type RefsSection = 'departments' | 'hobbies' | 'reactions'
 
 // ── иконки ──────────────────────────────────────────────────────────────────
 const IconLink = () => (
@@ -36,6 +37,17 @@ const IconCheck = () => (
     <polyline points="20 6 9 17 4 12"/>
   </svg>
 )
+const IconEdit = () => (
+  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
+    <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
+  </svg>
+)
+const IconPlus = () => (
+  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
+    <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
+  </svg>
+)
 
 // ── тост-уведомление ────────────────────────────────────────────────────────
 function Toast({ message, onDone }: { message: string; onDone: () => void }) {
@@ -55,6 +67,40 @@ function Toast({ message, onDone }: { message: string; onDone: () => void }) {
       <IconCheck />
       {message}
     </motion.div>
+  )
+}
+
+// ── общие компоненты ────────────────────────────────────────────────────────
+function InlineInput({ value, onChange, placeholder, className = '' }: {
+  value: string; onChange: (v: string) => void; placeholder?: string; className?: string
+}) {
+  return (
+    <input
+      value={value}
+      onChange={e => onChange(e.target.value)}
+      placeholder={placeholder}
+      className={`w-full px-3 py-2 rounded-lg text-sm outline-none transition-colors ${className}`}
+      style={{ background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.10)', color: 'var(--fg-1)' }}
+    />
+  )
+}
+
+function ActionBtn({ onClick, disabled, title, children, danger }: {
+  onClick: () => void; disabled?: boolean; title?: string; children: React.ReactNode; danger?: boolean
+}) {
+  return (
+    <button
+      onClick={onClick}
+      disabled={disabled}
+      title={title}
+      className="p-1.5 rounded-lg transition-colors disabled:opacity-30"
+      style={{
+        background: danger ? 'rgba(255,60,60,0.08)' : 'rgba(255,255,255,0.06)',
+        color: danger ? '#ff6b6b' : 'var(--fg-2)',
+      }}
+    >
+      {children}
+    </button>
   )
 }
 
@@ -85,9 +131,7 @@ function UsersTab() {
       const res = await api.adminBanUser(user.id)
       setUsers(prev => prev.map(u => u.id === user.id ? { ...u, is_banned: res.is_banned } : u))
       showToast(res.is_banned ? `${user.name ?? user.email} заблокирован` : `${user.name ?? user.email} разблокирован`)
-    } catch (e: unknown) {
-      showToast((e as Error).message)
-    }
+    } catch (e: unknown) { showToast((e as Error).message) }
   }
 
   const handleDelete = async (user: ApiUser) => {
@@ -96,9 +140,7 @@ function UsersTab() {
       await api.adminDelUser(user.id)
       setUsers(prev => prev.filter(u => u.id !== user.id))
       showToast('Пользователь удалён')
-    } catch (e: unknown) {
-      showToast((e as Error).message)
-    }
+    } catch (e: unknown) { showToast((e as Error).message) }
   }
 
   const handleCopyMagicLink = async (user: ApiUser) => {
@@ -107,11 +149,8 @@ function UsersTab() {
       const res = await api.adminGetMagicLink(user.id)
       await navigator.clipboard.writeText(res.magic_url)
       showToast('Magic Link скопирован!')
-    } catch {
-      showToast('Не удалось скопировать ссылку')
-    } finally {
-      setCopyingId(null)
-    }
+    } catch { showToast('Не удалось скопировать ссылку') }
+    finally { setCopyingId(null) }
   }
 
   const handleExportCsv = async () => {
@@ -120,24 +159,17 @@ function UsersTab() {
       const blob = await api.adminGetCsvExport()
       const url = URL.createObjectURL(blob)
       const a = document.createElement('a')
-      a.href = url
-      a.download = `bso-users-${new Date().toISOString().slice(0, 10)}.csv`
-      a.click()
+      a.href = url; a.download = `bso-users-${new Date().toISOString().slice(0, 10)}.csv`; a.click()
       URL.revokeObjectURL(url)
       showToast('CSV скачан')
-    } catch {
-      showToast('Ошибка экспорта')
-    } finally {
-      setExporting(false)
-    }
+    } catch { showToast('Ошибка экспорта') }
+    finally { setExporting(false) }
   }
 
   return (
     <div className="flex flex-col gap-4">
       <div className="flex items-center justify-between">
-        <span className="text-sm" style={{ color: 'var(--fg-3)' }}>
-          Всего: {users.length}
-        </span>
+        <span className="text-sm" style={{ color: 'var(--fg-3)' }}>Всего: {users.length}</span>
         <button
           onClick={handleExportCsv}
           disabled={exporting || loading}
@@ -168,68 +200,32 @@ function UsersTab() {
                 border: `1px solid ${user.is_banned ? 'rgba(255,60,60,0.18)' : 'rgba(255,255,255,0.08)'}`,
               }}
             >
-              {/* Аватар */}
-              <div
-                className="w-9 h-9 rounded-full flex-shrink-0 flex items-center justify-center text-sm font-bold overflow-hidden"
-                style={{ background: 'rgba(255,107,0,0.2)', color: 'var(--brand-orange)' }}
-              >
+              <div className="w-9 h-9 rounded-full flex-shrink-0 flex items-center justify-center text-sm font-bold overflow-hidden"
+                style={{ background: 'rgba(255,107,0,0.2)', color: 'var(--brand-orange)' }}>
                 {user.avatar_url
                   ? <img src={user.avatar_url} alt="" className="w-full h-full object-cover" />
-                  : (user.name?.[0] ?? user.email[0]).toUpperCase()
-                }
+                  : (user.name?.[0] ?? user.email[0]).toUpperCase()}
               </div>
-
-              {/* Инфо */}
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2">
-                  <span className="text-sm font-medium truncate" style={{ color: 'var(--fg-1)' }}>
-                    {user.name ?? '(без имени)'}
-                  </span>
-                  {!!user.is_admin && (
-                    <span className="text-xs px-1.5 py-0.5 rounded-md" style={{ background: 'rgba(255,107,0,0.2)', color: 'var(--brand-orange)' }}>
-                      admin
-                    </span>
-                  )}
-                  {!!user.is_banned && (
-                    <span className="text-xs px-1.5 py-0.5 rounded-md" style={{ background: 'rgba(255,60,60,0.2)', color: '#ff6b6b' }}>
-                      бан
-                    </span>
-                  )}
+                  <span className="text-sm font-medium truncate" style={{ color: 'var(--fg-1)' }}>{user.name ?? '(без имени)'}</span>
+                  {!!user.is_admin && <span className="text-xs px-1.5 py-0.5 rounded-md" style={{ background: 'rgba(255,107,0,0.2)', color: 'var(--brand-orange)' }}>admin</span>}
+                  {!!user.is_banned && <span className="text-xs px-1.5 py-0.5 rounded-md" style={{ background: 'rgba(255,60,60,0.2)', color: '#ff6b6b' }}>бан</span>}
                 </div>
                 <div className="text-xs truncate" style={{ color: 'var(--fg-3)' }}>
                   {user.email} · {user.department ?? 'отдел не указан'}
                 </div>
               </div>
-
-              {/* Кнопки действий */}
               <div className="flex items-center gap-1.5 flex-shrink-0">
-                <button
-                  onClick={() => handleCopyMagicLink(user)}
-                  disabled={copyingId === user.id}
-                  title="Copy Magic Link"
-                  className="p-1.5 rounded-lg transition-colors disabled:opacity-50"
-                  style={{ background: 'rgba(255,255,255,0.06)', color: 'var(--fg-2)' }}
-                >
+                <ActionBtn onClick={() => handleCopyMagicLink(user)} disabled={copyingId === user.id} title="Copy Magic Link">
                   {copyingId === user.id ? <IconCheck /> : <IconLink />}
-                </button>
-                <button
-                  onClick={() => handleBan(user)}
-                  disabled={!!user.is_admin}
-                  title={user.is_banned ? 'Разбанить' : 'Забанить'}
-                  className="p-1.5 rounded-lg transition-colors disabled:opacity-30"
-                  style={{ background: user.is_banned ? 'rgba(255,107,0,0.12)' : 'rgba(255,255,255,0.06)', color: user.is_banned ? 'var(--brand-orange)' : 'var(--fg-2)' }}
-                >
+                </ActionBtn>
+                <ActionBtn onClick={() => handleBan(user)} disabled={!!user.is_admin} title={user.is_banned ? 'Разбанить' : 'Забанить'}>
                   <IconBan />
-                </button>
-                <button
-                  onClick={() => handleDelete(user)}
-                  disabled={!!user.is_admin}
-                  title="Удалить"
-                  className="p-1.5 rounded-lg transition-colors disabled:opacity-30"
-                  style={{ background: 'rgba(255,60,60,0.08)', color: '#ff6b6b' }}
-                >
+                </ActionBtn>
+                <ActionBtn onClick={() => handleDelete(user)} disabled={!!user.is_admin} danger>
                   <IconTrash />
-                </button>
+                </ActionBtn>
               </div>
             </motion.div>
           ))}
@@ -250,12 +246,8 @@ function LogsTab() {
 
   const load = useCallback(async () => {
     setLoading(true)
-    try {
-      const res = await api.adminLogs()
-      setLines(res.lines)
-    } finally {
-      setLoading(false)
-    }
+    try { const res = await api.adminLogs(); setLines(res.lines) }
+    finally { setLoading(false) }
   }, [])
 
   useEffect(() => { load() }, [load])
@@ -269,9 +261,7 @@ function LogsTab() {
   return (
     <div className="flex flex-col gap-3">
       <div className="flex justify-end">
-        <button
-          onClick={load}
-          disabled={loading}
+        <button onClick={load} disabled={loading}
           className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-opacity disabled:opacity-50"
           style={{ background: 'rgba(255,255,255,0.08)', color: 'var(--fg-1)', border: '1px solid rgba(255,255,255,0.12)' }}
         >
@@ -279,11 +269,8 @@ function LogsTab() {
           {loading ? 'Загрузка...' : 'Обновить'}
         </button>
       </div>
-
-      <div
-        className="rounded-xl p-4 overflow-auto max-h-[60vh]"
-        style={{ background: '#0d0d0d', border: '1px solid rgba(255,255,255,0.08)' }}
-      >
+      <div className="rounded-xl p-4 overflow-auto max-h-[60vh]"
+        style={{ background: '#0d0d0d', border: '1px solid rgba(255,255,255,0.08)' }}>
         {lines.length === 0 ? (
           <span className="font-mono text-xs" style={{ color: 'rgba(255,255,255,0.3)' }}>
             {loading ? 'Загрузка логов...' : 'Логи пусты'}
@@ -291,9 +278,7 @@ function LogsTab() {
         ) : (
           <pre className="font-mono text-xs leading-relaxed whitespace-pre-wrap break-all m-0">
             {lines.map((line, i) => (
-              <span key={i} style={{ color: colorLine(line), display: 'block' }}>
-                {line}
-              </span>
+              <span key={i} style={{ color: colorLine(line), display: 'block' }}>{line}</span>
             ))}
           </pre>
         )}
@@ -304,11 +289,11 @@ function LogsTab() {
 
 // ── вкладка "SMTP" ──────────────────────────────────────────────────────────
 const SMTP_FIELDS: { key: string; label: string; type?: string; placeholder?: string }[] = [
-  { key: 'smtp_host',   label: 'SMTP Host',   placeholder: 'smtp.gmail.com' },
-  { key: 'smtp_port',   label: 'SMTP Port',   placeholder: '587' },
-  { key: 'smtp_user',   label: 'Логин',       placeholder: 'you@company.ru' },
-  { key: 'smtp_pass',   label: 'Пароль',      type: 'password', placeholder: '••••••••' },
-  { key: 'smtp_from',   label: 'From (имя)',  placeholder: '"БСО Корпоратив" <no-reply@company.ru>' },
+  { key: 'smtp_host', label: 'SMTP Host', placeholder: 'smtp.gmail.com' },
+  { key: 'smtp_port', label: 'SMTP Port', placeholder: '587' },
+  { key: 'smtp_user', label: 'Логин',     placeholder: 'you@company.ru' },
+  { key: 'smtp_pass', label: 'Пароль',    type: 'password', placeholder: '••••••••' },
+  { key: 'smtp_from', label: 'From',      placeholder: '"БСО" <no-reply@company.ru>' },
 ]
 
 function SmtpTab() {
@@ -320,24 +305,15 @@ function SmtpTab() {
 
   useEffect(() => {
     api.adminGetSmtp()
-      .then(data => {
-        setForm(data)
-        setSecure(data.smtp_secure === 'true')
-      })
+      .then(data => { setForm(data); setSecure(data.smtp_secure === 'true') })
       .finally(() => setLoading(false))
   }, [])
 
   const handleSave = async (e: React.FormEvent) => {
-    e.preventDefault()
-    setSaving(true)
-    try {
-      await api.adminSetSmtp({ ...form, smtp_secure: String(secure) })
-      setToast('Настройки SMTP сохранены')
-    } catch (err: unknown) {
-      setToast((err as Error).message)
-    } finally {
-      setSaving(false)
-    }
+    e.preventDefault(); setSaving(true)
+    try { await api.adminSetSmtp({ ...form, smtp_secure: String(secure) }); setToast('Настройки SMTP сохранены') }
+    catch (err: unknown) { setToast((err as Error).message) }
+    finally { setSaving(false) }
   }
 
   if (loading) return <div className="text-center py-12" style={{ color: 'var(--fg-3)' }}>Загрузка...</div>
@@ -347,44 +323,26 @@ function SmtpTab() {
       {SMTP_FIELDS.map(f => (
         <div key={f.key} className="flex flex-col gap-1.5">
           <label className="text-xs font-medium" style={{ color: 'var(--fg-3)' }}>{f.label}</label>
-          <input
-            type={f.type ?? 'text'}
-            value={form[f.key] ?? ''}
-            placeholder={f.placeholder}
+          <input type={f.type ?? 'text'} value={form[f.key] ?? ''} placeholder={f.placeholder}
             onChange={e => setForm(prev => ({ ...prev, [f.key]: e.target.value }))}
             className="w-full px-3 py-2.5 rounded-xl text-sm outline-none transition-colors"
-            style={{
-              background: 'rgba(255,255,255,0.06)',
-              border: '1px solid rgba(255,255,255,0.10)',
-              color: 'var(--fg-1)',
-            }}
+            style={{ background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.10)', color: 'var(--fg-1)' }}
           />
         </div>
       ))}
-
       <div className="flex items-center gap-3">
-        <button
-          type="button"
-          onClick={() => setSecure(v => !v)}
+        <button type="button" onClick={() => setSecure(v => !v)}
           className="w-10 h-5 rounded-full transition-colors relative flex-shrink-0"
-          style={{ background: secure ? 'var(--brand-orange)' : 'rgba(255,255,255,0.12)' }}
-        >
-          <span
-            className="absolute top-0.5 w-4 h-4 rounded-full bg-white transition-transform"
-            style={{ transform: secure ? 'translateX(20px)' : 'translateX(2px)' }}
-          />
+          style={{ background: secure ? 'var(--brand-orange)' : 'rgba(255,255,255,0.12)' }}>
+          <span className="absolute top-0.5 w-4 h-4 rounded-full bg-white transition-transform"
+            style={{ transform: secure ? 'translateX(20px)' : 'translateX(2px)' }} />
         </button>
-        <span className="text-sm" style={{ color: 'var(--fg-2)' }}>SSL/TLS (smtp_secure)</span>
+        <span className="text-sm" style={{ color: 'var(--fg-2)' }}>SSL/TLS</span>
       </div>
-
-      <button
-        type="submit"
-        disabled={saving}
-        className="cta-orange mt-2 py-3 rounded-xl font-semibold text-sm disabled:opacity-60"
-      >
+      <button type="submit" disabled={saving}
+        className="cta-orange mt-2 py-3 rounded-xl font-semibold text-sm disabled:opacity-60">
         {saving ? 'Сохранение...' : 'Сохранить настройки'}
       </button>
-
       <AnimatePresence>
         {toast && <Toast message={toast} onDone={() => setToast(null)} />}
       </AnimatePresence>
@@ -392,72 +350,468 @@ function SmtpTab() {
   )
 }
 
-// ── главный компонент ───────────────────────────────────────────────────────
+// ════════════════════════════════════════════════════════════════════════════
+// вкладка "Справочники"
+// ════════════════════════════════════════════════════════════════════════════
+
+// ── секция Отделы ────────────────────────────────────────────────────────────
+function DepartmentsSection({ showToast }: { showToast: (m: string) => void }) {
+  const [items, setItems] = useState<ApiDepartment[]>([])
+  const [loading, setLoading] = useState(true)
+  const [adding, setAdding] = useState(false)
+  const [newName, setNewName] = useState('')
+  const [editId, setEditId] = useState<string | null>(null)
+  const [editName, setEditName] = useState('')
+
+  const load = useCallback(async () => {
+    setLoading(true)
+    try { setItems(await api.adminGetDepartments()) }
+    finally { setLoading(false) }
+  }, [])
+
+  useEffect(() => { load() }, [load])
+
+  const handleAdd = async () => {
+    if (!newName.trim()) return
+    try {
+      const dept = await api.adminCreateDepartment({ name: newName.trim() })
+      setItems(prev => [...prev, dept])
+      setNewName(''); setAdding(false)
+      showToast(`Отдел «${dept.name}» создан`)
+    } catch (e: unknown) { showToast((e as Error).message) }
+  }
+
+  const handleEdit = async (id: string) => {
+    if (!editName.trim()) return
+    try {
+      const dept = await api.adminUpdateDepartment(id, { name: editName.trim() })
+      setItems(prev => prev.map(d => d.id === id ? dept : d))
+      setEditId(null)
+      showToast('Отдел обновлён')
+    } catch (e: unknown) { showToast((e as Error).message) }
+  }
+
+  const handleDelete = async (dept: ApiDepartment) => {
+    try {
+      const res = await api.adminDeleteDepartment(dept.id)
+      if (res.soft_disabled) {
+        setItems(prev => prev.map(d => d.id === dept.id ? { ...d, is_active: 0 } : d))
+        showToast(res.error ?? 'Отдел деактивирован')
+      } else {
+        setItems(prev => prev.filter(d => d.id !== dept.id))
+        showToast(`Отдел «${dept.name}» удалён`)
+      }
+    } catch (e: unknown) { showToast((e as Error).message) }
+  }
+
+  if (loading) return <div className="text-center py-6 text-sm" style={{ color: 'var(--fg-3)' }}>Загрузка...</div>
+
+  return (
+    <div className="flex flex-col gap-2">
+      <div className="flex items-center justify-between mb-1">
+        <span className="text-xs font-medium" style={{ color: 'var(--fg-3)' }}>{items.length} отделов</span>
+        <button onClick={() => { setAdding(v => !v); setNewName('') }}
+          className="flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-medium"
+          style={{ background: 'rgba(255,107,0,0.15)', color: 'var(--brand-orange)', border: '1px solid rgba(255,107,0,0.3)' }}>
+          <IconPlus /> Добавить
+        </button>
+      </div>
+
+      {adding && (
+        <motion.div initial={{ opacity: 0, y: -6 }} animate={{ opacity: 1, y: 0 }}
+          className="flex gap-2 p-2 rounded-xl" style={{ background: 'rgba(255,107,0,0.06)', border: '1px solid rgba(255,107,0,0.2)' }}>
+          <InlineInput value={newName} onChange={setNewName} placeholder="Название отдела" className="flex-1" />
+          <button onClick={handleAdd} className="px-3 py-1.5 rounded-lg text-xs font-bold"
+            style={{ background: 'var(--brand-orange)', color: '#fff' }}>ОК</button>
+          <button onClick={() => setAdding(false)} className="px-3 py-1.5 rounded-lg text-xs"
+            style={{ background: 'rgba(255,255,255,0.06)', color: 'var(--fg-3)' }}>✕</button>
+        </motion.div>
+      )}
+
+      {items.map(dept => (
+        <motion.div key={dept.id} layout
+          className="flex items-center gap-2 px-3 py-2 rounded-xl"
+          style={{ background: dept.is_active ? 'rgba(255,255,255,0.04)' : 'rgba(255,60,60,0.04)', border: '1px solid rgba(255,255,255,0.07)' }}>
+          {editId === dept.id ? (
+            <>
+              <InlineInput value={editName} onChange={setEditName} className="flex-1" />
+              <button onClick={() => handleEdit(dept.id)} className="px-2.5 py-1 rounded-lg text-xs font-bold"
+                style={{ background: 'var(--brand-orange)', color: '#fff' }}>ОК</button>
+              <button onClick={() => setEditId(null)} className="px-2.5 py-1 rounded-lg text-xs"
+                style={{ background: 'rgba(255,255,255,0.06)', color: 'var(--fg-3)' }}>✕</button>
+            </>
+          ) : (
+            <>
+              <span className="flex-1 text-sm font-medium" style={{ color: dept.is_active ? 'var(--fg-1)' : 'var(--fg-3)' }}>
+                {dept.name}
+                {!dept.is_active && <span className="ml-2 text-xs" style={{ color: '#ff6b6b' }}>деактивирован</span>}
+              </span>
+              <ActionBtn onClick={() => { setEditId(dept.id); setEditName(dept.name) }} title="Изменить">
+                <IconEdit />
+              </ActionBtn>
+              <ActionBtn onClick={() => handleDelete(dept)} danger title="Удалить">
+                <IconTrash />
+              </ActionBtn>
+            </>
+          )}
+        </motion.div>
+      ))}
+    </div>
+  )
+}
+
+// ── секция Хобби ─────────────────────────────────────────────────────────────
+function HobbiesSection({ showToast }: { showToast: (m: string) => void }) {
+  const [items, setItems] = useState<ApiHobby[]>([])
+  const [loading, setLoading] = useState(true)
+  const [expanded, setExpanded] = useState<Set<string>>(new Set())
+  const [addingParent, setAddingParent] = useState(false)
+  const [addingChildFor, setAddingChildFor] = useState<string | null>(null)
+  const [newLabel, setNewLabel] = useState('')
+  const [newEmoji, setNewEmoji] = useState('')
+  const [editId, setEditId] = useState<string | null>(null)
+  const [editLabel, setEditLabel] = useState('')
+  const [editEmoji, setEditEmoji] = useState('')
+
+  const load = useCallback(async () => {
+    setLoading(true)
+    try { setItems(await api.adminGetHobbies()) }
+    finally { setLoading(false) }
+  }, [])
+
+  useEffect(() => { load() }, [load])
+
+  const parents = items.filter(h => h.parent_id === null)
+  const childrenOf = (pid: string) => items.filter(h => h.parent_id === pid)
+
+  const handleAddParent = async () => {
+    if (!newLabel.trim()) return
+    try {
+      const h = await api.adminCreateHobby({ label: newLabel.trim(), emoji: newEmoji.trim() })
+      setItems(prev => [...prev, h]); setNewLabel(''); setNewEmoji(''); setAddingParent(false)
+      showToast(`Категория «${h.label}» создана`)
+    } catch (e: unknown) { showToast((e as Error).message) }
+  }
+
+  const handleAddChild = async (parentId: string) => {
+    if (!newLabel.trim()) return
+    try {
+      const h = await api.adminCreateHobby({ label: newLabel.trim(), emoji: newEmoji.trim(), parent_id: parentId })
+      setItems(prev => [...prev, h]); setNewLabel(''); setNewEmoji(''); setAddingChildFor(null)
+      showToast(`Хобби «${h.label}» создано`)
+    } catch (e: unknown) { showToast((e as Error).message) }
+  }
+
+  const handleEdit = async (id: string) => {
+    try {
+      const h = await api.adminUpdateHobby(id, { label: editLabel.trim(), emoji: editEmoji.trim() })
+      setItems(prev => prev.map(x => x.id === id ? h : x)); setEditId(null)
+      showToast('Обновлено')
+    } catch (e: unknown) { showToast((e as Error).message) }
+  }
+
+  const handleDelete = async (hobby: ApiHobby) => {
+    try {
+      const res = await api.adminDeleteHobby(hobby.id)
+      if (res.soft_disabled) {
+        setItems(prev => prev.map(h =>
+          h.id === hobby.id || h.parent_id === hobby.id ? { ...h, is_active: 0 } : h
+        ))
+        showToast(res.error ?? 'Деактивировано')
+      } else {
+        setItems(prev => prev.filter(h => h.id !== hobby.id && h.parent_id !== hobby.id))
+        showToast(`«${hobby.label}» удалено`)
+      }
+    } catch (e: unknown) { showToast((e as Error).message) }
+  }
+
+  const toggleExpand = (id: string) => setExpanded(prev => {
+    const s = new Set(prev); s.has(id) ? s.delete(id) : s.add(id); return s
+  })
+
+  const AddForm = ({ onSave, onCancel }: { onSave: () => void; onCancel: () => void }) => (
+    <motion.div initial={{ opacity: 0, y: -6 }} animate={{ opacity: 1, y: 0 }}
+      className="flex gap-2 p-2 rounded-xl mt-1" style={{ background: 'rgba(255,107,0,0.06)', border: '1px solid rgba(255,107,0,0.2)' }}>
+      <InlineInput value={newEmoji} onChange={setNewEmoji} placeholder="🎯" className="w-14 text-center" />
+      <InlineInput value={newLabel} onChange={setNewLabel} placeholder="Название" className="flex-1" />
+      <button onClick={onSave} className="px-3 py-1.5 rounded-lg text-xs font-bold"
+        style={{ background: 'var(--brand-orange)', color: '#fff' }}>ОК</button>
+      <button onClick={onCancel} className="px-3 py-1.5 rounded-lg text-xs"
+        style={{ background: 'rgba(255,255,255,0.06)', color: 'var(--fg-3)' }}>✕</button>
+    </motion.div>
+  )
+
+  if (loading) return <div className="text-center py-6 text-sm" style={{ color: 'var(--fg-3)' }}>Загрузка...</div>
+
+  return (
+    <div className="flex flex-col gap-2">
+      <div className="flex items-center justify-between mb-1">
+        <span className="text-xs font-medium" style={{ color: 'var(--fg-3)' }}>{parents.length} категорий</span>
+        <button onClick={() => { setAddingParent(v => !v); setNewLabel(''); setNewEmoji('') }}
+          className="flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-medium"
+          style={{ background: 'rgba(255,107,0,0.15)', color: 'var(--brand-orange)', border: '1px solid rgba(255,107,0,0.3)' }}>
+          <IconPlus /> Категория
+        </button>
+      </div>
+
+      {addingParent && <AddForm onSave={handleAddParent} onCancel={() => setAddingParent(false)} />}
+
+      {parents.map(parent => {
+        const children = childrenOf(parent.id)
+        const open = expanded.has(parent.id)
+        return (
+          <div key={parent.id}>
+            {/* Родительская строка */}
+            <motion.div layout className="flex items-center gap-2 px-3 py-2 rounded-xl cursor-pointer"
+              style={{ background: parent.is_active ? 'rgba(255,255,255,0.06)' : 'rgba(255,60,60,0.04)', border: '1px solid rgba(255,255,255,0.10)' }}
+              onClick={() => toggleExpand(parent.id)}>
+              {editId === parent.id ? (
+                <div className="flex gap-2 flex-1" onClick={e => e.stopPropagation()}>
+                  <InlineInput value={editEmoji} onChange={setEditEmoji} className="w-14 text-center" />
+                  <InlineInput value={editLabel} onChange={setEditLabel} className="flex-1" />
+                  <button onClick={() => handleEdit(parent.id)} className="px-2.5 py-1 rounded-lg text-xs font-bold"
+                    style={{ background: 'var(--brand-orange)', color: '#fff' }}>ОК</button>
+                  <button onClick={() => setEditId(null)} className="px-2 py-1 rounded-lg text-xs"
+                    style={{ background: 'rgba(255,255,255,0.06)', color: 'var(--fg-3)' }}>✕</button>
+                </div>
+              ) : (
+                <>
+                  <span className="text-base">{parent.emoji}</span>
+                  <span className="flex-1 text-sm font-semibold" style={{ color: parent.is_active ? 'var(--fg-1)' : 'var(--fg-3)' }}>
+                    {parent.label}
+                    <span className="ml-1.5 text-xs font-normal" style={{ color: 'var(--fg-3)' }}>{children.length}</span>
+                    {!parent.is_active && <span className="ml-2 text-xs" style={{ color: '#ff6b6b' }}>деактивирована</span>}
+                  </span>
+                  <span className="text-xs" style={{ color: 'var(--fg-3)' }}>{open ? '▲' : '▼'}</span>
+                  <div className="flex gap-1" onClick={e => e.stopPropagation()}>
+                    <ActionBtn onClick={() => { setAddingChildFor(addingChildFor === parent.id ? null : parent.id); setNewLabel(''); setNewEmoji('') }} title="Добавить хобби">
+                      <IconPlus />
+                    </ActionBtn>
+                    <ActionBtn onClick={() => { setEditId(parent.id); setEditLabel(parent.label); setEditEmoji(parent.emoji ?? '') }} title="Изменить">
+                      <IconEdit />
+                    </ActionBtn>
+                    <ActionBtn onClick={() => handleDelete(parent)} danger title="Удалить">
+                      <IconTrash />
+                    </ActionBtn>
+                  </div>
+                </>
+              )}
+            </motion.div>
+
+            {/* Форма добавления хобби в эту категорию */}
+            {addingChildFor === parent.id && (
+              <div className="ml-4">
+                <AddForm onSave={() => handleAddChild(parent.id)} onCancel={() => setAddingChildFor(null)} />
+              </div>
+            )}
+
+            {/* Дочерние хобби */}
+            <AnimatePresence>
+              {open && (
+                <motion.div
+                  initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} exit={{ opacity: 0, height: 0 }}
+                  className="ml-4 flex flex-col gap-1 mt-1 overflow-hidden">
+                  {children.map(child => (
+                    <div key={child.id} className="flex items-center gap-2 px-3 py-1.5 rounded-lg"
+                      style={{ background: child.is_active ? 'rgba(255,255,255,0.03)' : 'rgba(255,60,60,0.03)', border: '1px solid rgba(255,255,255,0.06)' }}>
+                      {editId === child.id ? (
+                        <>
+                          <InlineInput value={editEmoji} onChange={setEditEmoji} className="w-14 text-center" />
+                          <InlineInput value={editLabel} onChange={setEditLabel} className="flex-1" />
+                          <button onClick={() => handleEdit(child.id)} className="px-2.5 py-1 rounded-lg text-xs font-bold"
+                            style={{ background: 'var(--brand-orange)', color: '#fff' }}>ОК</button>
+                          <button onClick={() => setEditId(null)} className="px-2 py-1 rounded-lg text-xs"
+                            style={{ background: 'rgba(255,255,255,0.06)', color: 'var(--fg-3)' }}>✕</button>
+                        </>
+                      ) : (
+                        <>
+                          <span className="text-sm">{child.emoji}</span>
+                          <span className="flex-1 text-xs font-medium" style={{ color: child.is_active ? 'var(--fg-2)' : 'var(--fg-3)' }}>
+                            {child.label}
+                            {!child.is_active && <span className="ml-1" style={{ color: '#ff6b6b' }}>×</span>}
+                          </span>
+                          <ActionBtn onClick={() => { setEditId(child.id); setEditLabel(child.label); setEditEmoji(child.emoji ?? '') }} title="Изменить">
+                            <IconEdit />
+                          </ActionBtn>
+                          <ActionBtn onClick={() => handleDelete(child)} danger title="Удалить">
+                            <IconTrash />
+                          </ActionBtn>
+                        </>
+                      )}
+                    </div>
+                  ))}
+                  {children.length === 0 && (
+                    <p className="text-xs px-3 py-1" style={{ color: 'var(--fg-3)' }}>Нет хобби в категории</p>
+                  )}
+                </motion.div>
+              )}
+            </AnimatePresence>
+          </div>
+        )
+      })}
+    </div>
+  )
+}
+
+// ── секция Реакции ────────────────────────────────────────────────────────────
+function ReactionsSection({ showToast }: { showToast: (m: string) => void }) {
+  const [items, setItems] = useState<ApiReactionType[]>([])
+  const [loading, setLoading] = useState(true)
+  const [adding, setAdding] = useState(false)
+  const [newEmoji, setNewEmoji] = useState('')
+  const [newLabel, setNewLabel] = useState('')
+
+  const load = useCallback(async () => {
+    setLoading(true)
+    try { setItems(await api.adminGetReactionTypes()) }
+    finally { setLoading(false) }
+  }, [])
+
+  useEffect(() => { load() }, [load])
+
+  const handleAdd = async () => {
+    if (!newEmoji.trim() || !newLabel.trim()) return
+    try {
+      const rt = await api.adminCreateReactionType({ emoji: newEmoji.trim(), label: newLabel.trim() })
+      setItems(prev => [...prev, rt]); setNewEmoji(''); setNewLabel(''); setAdding(false)
+      showToast(`Реакция «${rt.label}» добавлена`)
+    } catch (e: unknown) { showToast((e as Error).message) }
+  }
+
+  const handleDelete = async (rt: ApiReactionType) => {
+    try {
+      await api.adminDeleteReactionType(rt.id)
+      setItems(prev => prev.filter(r => r.id !== rt.id))
+      showToast(`«${rt.label}» удалена`)
+    } catch (e: unknown) { showToast((e as Error).message) }
+  }
+
+  if (loading) return <div className="text-center py-6 text-sm" style={{ color: 'var(--fg-3)' }}>Загрузка...</div>
+
+  return (
+    <div className="flex flex-col gap-2">
+      <div className="flex items-center justify-between mb-1">
+        <span className="text-xs font-medium" style={{ color: 'var(--fg-3)' }}>{items.length} реакций</span>
+        <button onClick={() => { setAdding(v => !v); setNewEmoji(''); setNewLabel('') }}
+          className="flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-medium"
+          style={{ background: 'rgba(255,107,0,0.15)', color: 'var(--brand-orange)', border: '1px solid rgba(255,107,0,0.3)' }}>
+          <IconPlus /> Добавить
+        </button>
+      </div>
+
+      {adding && (
+        <motion.div initial={{ opacity: 0, y: -6 }} animate={{ opacity: 1, y: 0 }}
+          className="flex gap-2 p-2 rounded-xl" style={{ background: 'rgba(255,107,0,0.06)', border: '1px solid rgba(255,107,0,0.2)' }}>
+          <InlineInput value={newEmoji} onChange={setNewEmoji} placeholder="🎉" className="w-14 text-center" />
+          <InlineInput value={newLabel} onChange={setNewLabel} placeholder="Название реакции" className="flex-1" />
+          <button onClick={handleAdd} className="px-3 py-1.5 rounded-lg text-xs font-bold"
+            style={{ background: 'var(--brand-orange)', color: '#fff' }}>ОК</button>
+          <button onClick={() => setAdding(false)} className="px-3 py-1.5 rounded-lg text-xs"
+            style={{ background: 'rgba(255,255,255,0.06)', color: 'var(--fg-3)' }}>✕</button>
+        </motion.div>
+      )}
+
+      {items.map(rt => (
+        <motion.div key={rt.id} layout
+          className="flex items-center gap-3 px-3 py-2 rounded-xl"
+          style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.07)' }}>
+          <span className="text-xl">{rt.emoji}</span>
+          <span className="flex-1 text-sm font-medium" style={{ color: 'var(--fg-1)' }}>{rt.label}</span>
+          <ActionBtn onClick={() => handleDelete(rt)} danger title="Удалить">
+            <IconTrash />
+          </ActionBtn>
+        </motion.div>
+      ))}
+    </div>
+  )
+}
+
+// ── вкладка "Справочники" (обёртка) ─────────────────────────────────────────
+function RefsTab() {
+  const [section, setSection] = useState<RefsSection>('departments')
+  const [toast, setToast] = useState<string | null>(null)
+
+  const SECTIONS: { id: RefsSection; label: string }[] = [
+    { id: 'departments', label: 'Отделы' },
+    { id: 'hobbies',     label: 'Хобби' },
+    { id: 'reactions',   label: 'Реакции' },
+  ]
+
+  return (
+    <div className="flex flex-col gap-4">
+      {/* Под-табы */}
+      <div className="flex gap-1 p-1 rounded-xl" style={{ background: 'rgba(255,255,255,0.04)' }}>
+        {SECTIONS.map(s => (
+          <button key={s.id} onClick={() => setSection(s.id)}
+            className="flex-1 py-1.5 rounded-lg text-xs font-semibold transition-all"
+            style={{
+              background: section === s.id ? 'rgba(255,107,0,0.20)' : 'transparent',
+              color: section === s.id ? 'var(--brand-orange)' : 'var(--fg-3)',
+              border: section === s.id ? '1px solid rgba(255,107,0,0.28)' : '1px solid transparent',
+            }}>
+            {s.label}
+          </button>
+        ))}
+      </div>
+
+      {/* Контент секции */}
+      <AnimatePresence mode="wait">
+        <motion.div key={section} initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.15 }}>
+          {section === 'departments' && <DepartmentsSection showToast={m => setToast(m)} />}
+          {section === 'hobbies'     && <HobbiesSection     showToast={m => setToast(m)} />}
+          {section === 'reactions'   && <ReactionsSection   showToast={m => setToast(m)} />}
+        </motion.div>
+      </AnimatePresence>
+
+      <AnimatePresence>
+        {toast && <Toast message={toast} onDone={() => setToast(null)} />}
+      </AnimatePresence>
+    </div>
+  )
+}
+
+// ── главный компонент ────────────────────────────────────────────────────────
 const TABS: { id: Tab; label: string }[] = [
   { id: 'users', label: 'Пользователи' },
   { id: 'logs',  label: 'Логи' },
   { id: 'smtp',  label: 'SMTP' },
+  { id: 'refs',  label: 'Справочники' },
 ]
 
 export default function AdminPage() {
   const [activeTab, setActiveTab] = useState<Tab>('users')
 
   return (
-    <div
-      className="min-h-screen px-4 py-8"
-      style={{ background: 'var(--bg-page)' }}
-    >
+    <div className="min-h-screen px-4 py-8" style={{ background: 'var(--bg-page)' }}>
       <div className="max-w-lg mx-auto flex flex-col gap-6">
 
-        {/* Шапка */}
-        <motion.div
-          initial={{ opacity: 0, y: -12 }}
-          animate={{ opacity: 1, y: 0 }}
-          className="flex flex-col gap-1"
-        >
-          <h1 className="text-xl font-bold" style={{ color: 'var(--fg-1)' }}>
-            Панель администратора
-          </h1>
-          <p className="text-sm" style={{ color: 'var(--fg-3)' }}>
-            БСО Tinder · управление
-          </p>
+        <motion.div initial={{ opacity: 0, y: -12 }} animate={{ opacity: 1, y: 0 }} className="flex flex-col gap-1">
+          <h1 className="text-xl font-bold" style={{ color: 'var(--fg-1)' }}>Панель администратора</h1>
+          <p className="text-sm" style={{ color: 'var(--fg-3)' }}>БСО Tinder · управление</p>
         </motion.div>
 
-        {/* Табы */}
-        <motion.div
-          initial={{ opacity: 0, y: 8 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.05 }}
-          className="glass-1 p-1 rounded-2xl flex gap-1"
-        >
+        <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.05 }}
+          className="glass-1 p-1 rounded-2xl flex gap-1">
           {TABS.map(tab => (
-            <button
-              key={tab.id}
-              onClick={() => setActiveTab(tab.id)}
-              className="flex-1 py-2 rounded-xl text-sm font-medium transition-all"
+            <button key={tab.id} onClick={() => setActiveTab(tab.id)}
+              className="flex-1 py-2 rounded-xl text-xs font-medium transition-all"
               style={{
                 background: activeTab === tab.id ? 'rgba(255,107,0,0.22)' : 'transparent',
                 color: activeTab === tab.id ? 'var(--brand-orange)' : 'var(--fg-3)',
                 border: activeTab === tab.id ? '1px solid rgba(255,107,0,0.30)' : '1px solid transparent',
-              }}
-            >
+              }}>
               {tab.label}
             </button>
           ))}
         </motion.div>
 
-        {/* Контент */}
-        <motion.div
-          key={activeTab}
-          initial={{ opacity: 0, y: 10 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.18 }}
-          className="glass-1 rounded-2xl p-5"
-        >
+        <motion.div key={activeTab} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.18 }}
+          className="glass-1 rounded-2xl p-5">
           <AnimatePresence mode="wait">
             {activeTab === 'users' && <UsersTab />}
             {activeTab === 'logs'  && <LogsTab />}
             {activeTab === 'smtp'  && <SmtpTab />}
+            {activeTab === 'refs'  && <RefsTab />}
           </AnimatePresence>
         </motion.div>
 

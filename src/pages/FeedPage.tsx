@@ -1,11 +1,9 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { AnimatePresence, motion } from 'framer-motion'
-import { api, type ApiUser } from '@/api/client'
+import { api, type ApiUser, type ApiDepartment } from '@/api/client'
 import { useAppStore, selectFilteredEmployees } from '@/store/useAppStore'
 import BottomNav from '@/components/ui/BottomNav'
-
-const DEPT_TABS = ['Все', 'IT', 'Логистика', 'Стройка', 'Финансы', 'HR'] as const
 
 const TONES = [
   'linear-gradient(135deg,#FF8A33,#FF6B00)',
@@ -21,13 +19,17 @@ export default function FeedPage() {
   const filtered = useAppStore(selectFilteredEmployees)
   const [loading, setLoading] = useState(true)
   const [selected, setSelected] = useState<ApiUser | null>(null)
+  const [depts, setDepts] = useState<ApiDepartment[]>([])
   const navigate = useNavigate()
 
   useEffect(() => {
     api.getUsers()
       .then(setEmployees)
       .finally(() => setLoading(false))
+    api.getDepartments().then(setDepts).catch(() => {})
   }, [setEmployees])
+
+  const deptTabs = ['Все', ...depts.map(d => d.name)]
 
   return (
     <div className="min-h-full flex flex-col bg-page-deep">
@@ -67,16 +69,20 @@ export default function FeedPage() {
           </div>
         </div>
 
-        {/* Dept tabs */}
+        {/* Dept tabs — динамические из БД */}
         <div className="mx-auto max-w-md px-5 pb-3 flex gap-1.5 overflow-x-auto scrollbar-none">
-          {DEPT_TABS.map(d => (
-            <button key={d} onClick={() => setDepartmentFilter(d as typeof departmentFilter)}
+          {deptTabs.map(d => (
+            <button
+              key={d}
+              onClick={() => setDepartmentFilter(d)}
               className={`shrink-0 px-3.5 py-1.5 rounded-full text-[13px] font-bold ease-spring press-shrink transition-all border ${
                 departmentFilter === d
                   ? 'bg-white text-graphite-900 border-transparent'
                   : 'glass-1 text-white/70'
               }`}
-            >{d}</button>
+            >
+              {d}
+            </button>
           ))}
         </div>
       </header>
@@ -119,6 +125,9 @@ export default function FeedPage() {
                 <div>
                   <h2 className="font-black text-[20px] tracking-tight">{selected.name}</h2>
                   <p className="text-[11px] font-black uppercase tracking-[0.08em] text-white/50 mt-1">{selected.department}</p>
+                  {selected.pitch && (
+                    <p className="text-[12px] text-white/60 mt-1 italic">{selected.pitch}</p>
+                  )}
                 </div>
                 <button
                   onClick={() => { navigate('/match'); setSelected(null) }}
@@ -127,11 +136,11 @@ export default function FeedPage() {
                   Мэтч ↗
                 </button>
               </div>
-              {selected.hobbies?.length ? (
+              {selected.hobbies?.filter(h => h.parent_id !== null).length ? (
                 <>
                   <p className="text-[10px] font-black uppercase tracking-[0.12em] text-white/40 mb-3">Интересы</p>
                   <div className="flex flex-wrap gap-2">
-                    {selected.hobbies.map(h => (
+                    {selected.hobbies.filter(h => h.parent_id !== null).map(h => (
                       <span key={h.id} className="px-3 py-1.5 rounded-full text-[13px] font-bold glass-1 text-white/85">
                         <span className="mr-1">{h.emoji}</span>{h.label}
                       </span>
@@ -148,7 +157,7 @@ export default function FeedPage() {
 }
 
 function PersonCard({ user, delay, onClick }: { user: ApiUser; delay: number; onClick: () => void }) {
-  const hobbies = user.hobbies?.slice(0, 4) ?? []
+  const hobbies = (user.hobbies ?? []).filter(h => h.parent_id !== null).slice(0, 4)
   return (
     <button
       onClick={onClick}

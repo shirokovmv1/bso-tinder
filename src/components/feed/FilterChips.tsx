@@ -1,16 +1,14 @@
-import type { Department } from '@/data/types'
-
-const DEPARTMENTS: (Department | 'Все')[] = ['Все', 'Логистика', 'Стройка', 'IT', 'Финансы', 'HR']
-
 interface Props {
-  value: Department | 'Все'
-  onChange: (dept: Department | 'Все') => void
+  value: string
+  onChange: (dept: string) => void
+  departments: string[]
 }
 
-export default function FilterChips({ value, onChange }: Props) {
+export default function FilterChips({ value, onChange, departments }: Props) {
+  const tabs = ['Все', ...departments]
   return (
     <div className="flex gap-2 overflow-x-auto scrollbar-none pb-1">
-      {DEPARTMENTS.map(dept => (
+      {tabs.map(dept => (
         <button
           key={dept}
           type="button"
