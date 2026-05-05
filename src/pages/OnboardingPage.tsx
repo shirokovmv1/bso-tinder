@@ -12,6 +12,8 @@ export default function OnboardingPage() {
   const [allHobbies, setAllHobbies] = useState<ApiHobby[]>([])
   const [departments, setDepartments] = useState<ApiDepartment[]>([])
   const [saving, setSaving] = useState(false)
+  const [gender, setGender] = useState<'m' | 'f' | ''>('')
+  const [expMonths, setExpMonths] = useState('')
 
   const { nameInput, departmentInput, photoUrl, selectedHobbies,
     setNameInput, setDepartmentInput, setPhotoUrl, toggleHobby, currentUser, setCurrentUser } = useAppStore()
@@ -43,6 +45,8 @@ export default function OnboardingPage() {
         avatar_url: photoUrl || `https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(nameInput)}`,
         badge_id: badge.id,
         hobbyIds,
+        ...(gender ? { gender } : {}),
+        ...(expMonths ? { experience_months: Number(expMonths) } : {}),
       })
       setCurrentUser(updated)
       setStep(3)
@@ -102,6 +106,41 @@ export default function OnboardingPage() {
                       ))}
                     </select>
                   </div>
+                </div>
+              </div>
+
+              {/* Пол + стаж */}
+              <div className="mt-4 flex gap-3">
+                <div className="flex-1">
+                  <div className="text-[10px] font-black uppercase tracking-[0.08em] text-white/50 mb-1.5">Пол</div>
+                  <div className="flex gap-2">
+                    {(['m', 'f'] as const).map(g => (
+                      <button
+                        key={g}
+                        onClick={() => setGender(prev => prev === g ? '' : g)}
+                        className={`flex-1 py-2 rounded-xl text-sm font-bold transition-all border ${
+                          gender === g
+                            ? 'bg-orange-500 border-transparent text-white'
+                            : 'glass-1 border-white/10 text-white/60'
+                        }`}
+                      >
+                        {g === 'm' ? '♂ Муж' : '♀ Жен'}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+                <div className="flex-1">
+                  <div className="text-[10px] font-black uppercase tracking-[0.08em] text-white/50 mb-1.5">Стаж (мес.)</div>
+                  <input
+                    type="number"
+                    min="0"
+                    max="600"
+                    value={expMonths}
+                    onChange={e => setExpMonths(e.target.value)}
+                    placeholder="0"
+                    className="w-full rounded-xl px-4 py-2 text-[15px] font-bold outline-none bg-transparent border border-white/10 text-white placeholder:text-white/30"
+                    style={{ background: 'rgba(255,255,255,0.06)' }}
+                  />
                 </div>
               </div>
             </motion.div>

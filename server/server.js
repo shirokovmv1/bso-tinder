@@ -24,10 +24,11 @@ app.use((req, _res, next) => {
 })
 
 // Роуты
-app.use('/api/auth',  require('./routes/auth'))
-app.use('/api/users', require('./routes/users'))
-app.use('/api/match', require('./routes/match'))
-app.use('/api/admin', require('./routes/admin'))
+app.use('/api/auth',      require('./routes/auth'))
+app.use('/api/users',     require('./routes/users'))
+app.use('/api/match',     require('./routes/match'))
+app.use('/api/admin',     require('./routes/admin'))
+app.use('/api/reactions', require('./routes/reactions'))
 
 // Публичный справочник отделов (для онбординга)
 const { verifyJWT } = require('./middleware/auth')

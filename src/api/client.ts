@@ -103,6 +103,14 @@ export const api = {
     request<{ success: boolean }>('/admin/settings/llm', { method: 'PUT', body: JSON.stringify(data) }),
   adminGetLlmModels: () =>
     request<{ provider: string; models: string[] }>('/admin/settings/llm/models'),
+
+  // ── Reactions ─────────────────────────────────────────────────────────────
+  getReactionTypes: () => request<ApiReactionType[]>('/reactions/types'),
+  getMyReactionsSent: () => request<{ from_user_id: string; to_user_id: string; emoji_type: string }[]>('/reactions/sent'),
+  sendReaction: (to_user_id: string, reaction_type_id: string) =>
+    request<{ action: 'added' | 'removed'; id?: string }>('/reactions', {
+      method: 'POST', body: JSON.stringify({ to_user_id, reaction_type_id }),
+    }),
 }
 
 // ── Типы API-ответов ─────────────────────────────────────────────────────────

@@ -1,7 +1,7 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { AnimatePresence, motion } from 'framer-motion'
-import { api, type ApiUser, type ApiDepartment } from '@/api/client'
+import { api, type ApiUser, type ApiDepartment, type ApiReactionType } from '@/api/client'
 import { useAppStore, selectFilteredEmployees } from '@/store/useAppStore'
 import BottomNav from '@/components/ui/BottomNav'
 
@@ -20,14 +20,37 @@ export default function FeedPage() {
   const [loading, setLoading] = useState(true)
   const [selected, setSelected] = useState<ApiUser | null>(null)
   const [depts, setDepts] = useState<ApiDepartment[]>([])
+  const [reactionTypes, setReactionTypes] = useState<ApiReactionType[]>([])
+  const [sentReactions, setSentReactions] = useState<Record<string, Set<string>>>({})
   const navigate = useNavigate()
 
   useEffect(() => {
-    api.getUsers()
-      .then(setEmployees)
-      .finally(() => setLoading(false))
+    api.getUsers().then(setEmployees).finally(() => setLoading(false))
     api.getDepartments().then(setDepts).catch(() => {})
+    api.getReactionTypes().then(setReactionTypes).catch(() => {})
+    api.getMyReactionsSent().then(rows => {
+      const map: Record<string, Set<string>> = {}
+      for (const r of rows) {
+        if (!map[r.to_user_id]) map[r.to_user_id] = new Set()
+        map[r.to_user_id].add(r.emoji_type)
+      }
+      setSentReactions(map)
+    }).catch(() => {})
   }, [setEmployees])
+
+  const handleReaction = useCallback(async (toUserId: string, typeId: string) => {
+    try {
+      const res = await api.sendReaction(toUserId, typeId)
+      setSentReactions(prev => {
+        const next = { ...prev }
+        if (!next[toUserId]) next[toUserId] = new Set()
+        else next[toUserId] = new Set(next[toUserId])
+        if (res.action === 'added') next[toUserId].add(typeId)
+        else next[toUserId].delete(typeId)
+        return next
+      })
+    } catch { /* ignore */ }
+  }, [])
 
   const deptTabs = ['Все', ...depts.map(d => d.name)]
 
@@ -117,7 +140,7 @@ export default function FeedPage() {
               onClick={e => e.stopPropagation()}
             >
               <div className="w-12 h-1 bg-white/20 rounded-full mx-auto mb-6" />
-              <div className="flex items-center gap-4 mb-6">
+              <div className="flex items-center gap-4 mb-5">
                 <div className="w-20 h-20 rounded-full grid place-items-center text-white font-black text-[30px] border border-white/20"
                   style={{ background: toneFor(selected.id) }}>
                   {(selected.name ?? '?')[0]}
@@ -139,7 +162,7 @@ export default function FeedPage() {
               {selected.hobbies?.filter(h => h.parent_id !== null).length ? (
                 <>
                   <p className="text-[10px] font-black uppercase tracking-[0.12em] text-white/40 mb-3">Интересы</p>
-                  <div className="flex flex-wrap gap-2">
+                  <div className="flex flex-wrap gap-2 mb-5">
                     {selected.hobbies.filter(h => h.parent_id !== null).map(h => (
                       <span key={h.id} className="px-3 py-1.5 rounded-full text-[13px] font-bold glass-1 text-white/85">
                         <span className="mr-1">{h.emoji}</span>{h.label}
@@ -148,6 +171,31 @@ export default function FeedPage() {
                   </div>
                 </>
               ) : null}
+
+              {reactionTypes.length > 0 && (
+                <>
+                  <p className="text-[10px] font-black uppercase tracking-[0.12em] text-white/40 mb-3">Реакция</p>
+                  <div className="flex gap-2 flex-wrap">
+                    {reactionTypes.map(rt => {
+                      const active = sentReactions[selected.id]?.has(rt.id)
+                      return (
+                        <button
+                          key={rt.id}
+                          onClick={() => handleReaction(selected.id, rt.id)}
+                          className={`flex items-center gap-1.5 px-3 py-2 rounded-full text-sm font-bold transition-all border ${
+                            active
+                              ? 'bg-orange-500 border-transparent text-white'
+                              : 'glass-1 border-white/10 text-white/70 hover:bg-white/10'
+                          }`}
+                        >
+                          <span>{rt.emoji}</span>
+                          <span className="text-[12px]">{rt.label}</span>
+                        </button>
+                      )
+                    })}
+                  </div>
+                </>
+              )}
             </motion.div>
           </motion.div>
         )}

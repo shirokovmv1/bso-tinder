@@ -819,7 +819,7 @@ function AiTab() {
   const handleSave = async () => {
     setSaving(true)
     try {
-      const payload: Partial<import('@/api/client').ApiLlmSettings> = {
+      const payload: Partial<ApiLlmSettings> = {
         llm_provider: provider,
         llm_model:    model,
         llm_base_url: baseUrl || undefined,
