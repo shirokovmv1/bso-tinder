@@ -1,0 +1,70 @@
+@import "tailwindcss";
+
+@theme {
+  /* Цвета */
+  --color-orange-400: #FF8C2E;
+  --color-orange-500: #FF6B00;
+  --color-orange-600: #E05A00;
+  --color-graphite-900: #1A1A1A;
+  --color-graphite-800: #222222;
+  --color-graphite-700: #2D2D2D;
+  --color-graphite-600: #3A3A3A;
+  --color-graphite-500: #4A4A4A;
+  --color-graphite-400: #6A6A6A;
+  --color-graphite-300: #9A9A9A;
+
+  /* Типографика */
+  --font-display: 'Geologica', sans-serif;
+  --font-body: 'Inter', sans-serif;
+
+  /* Радиусы */
+  --radius-sm: 8px;
+  --radius-md: 16px;
+  --radius-lg: 24px;
+  --radius-pill: 999px;
+
+  /* Тени */
+  --shadow-card: 0 4px 24px rgba(0, 0, 0, 0.4);
+  --shadow-modal: 0 8px 48px rgba(0, 0, 0, 0.6);
+  --shadow-orange: 0 4px 20px rgba(255, 107, 0, 0.4);
+}
+
+/* Базовые стили */
+* {
+  -webkit-tap-highlight-color: transparent;
+  box-sizing: border-box;
+}
+
+html, body, #root {
+  height: 100%;
+  overflow: hidden;
+}
+
+body {
+  background-color: #1A1A1A;
+  color: #FFFFFF;
+  font-family: 'Inter', sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* Скроллбар */
+::-webkit-scrollbar {
+  width: 4px;
+}
+::-webkit-scrollbar-track {
+  background: #2D2D2D;
+}
+::-webkit-scrollbar-thumb {
+  background: #FF6B00;
+  border-radius: 999px;
+}
+
+/* Утилиты */
+.font-display {
+  font-family: 'Geologica', sans-serif;
+}
+
+.safe-bottom {
+  padding-bottom: env(safe-area-inset-bottom, 16px);
+}
