@@ -1,0 +1,93 @@
+services:
+
+  # ── PROD (порт 80) ──────────────────────────────────────────────────────────
+  bso-api-prod:
+    build: .
+    container_name: bso-api-prod
+    restart: unless-stopped
+    env_file: .env.prod
+    environment:
+      NODE_ENV: production
+      PORT: "3001"
+      DB_PATH: /data/data.db
+    volumes:
+      - bso-db-prod:/data
+      - bso-logs-prod:/app/server/logs
+    networks:
+      - bso-prod
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:3001/api/health"]
+      interval: 20s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+
+  bso-nginx-prod:
+    image: nginx:1.27-alpine
+    container_name: bso-nginx-prod
+    restart: unless-stopped
+    ports:
+      - "80:80"
+    volumes:
+      - ./nginx.prod.conf:/etc/nginx/conf.d/default.conf:ro
+      - ./dist-prod:/usr/share/nginx/html:ro
+    networks:
+      - bso-prod
+    depends_on:
+      bso-api-prod:
+        condition: service_healthy
+
+  # ── TEST (порт 8080) ─────────────────────────────────────────────────────────
+  bso-api-test:
+    build: .
+    container_name: bso-api-test
+    restart: unless-stopped
+    env_file: .env.test
+    environment:
+      NODE_ENV: production
+      PORT: "3001"
+      DB_PATH: /data/data.db
+    volumes:
+      - bso-db-test:/data
+      - bso-logs-test:/app/server/logs
+    networks:
+      - bso-test
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:3001/api/health"]
+      interval: 20s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+
+  bso-nginx-test:
+    image: nginx:1.27-alpine
+    container_name: bso-nginx-test
+    restart: unless-stopped
+    ports:
+      - "8080:80"
+    volumes:
+      - ./nginx.test.conf:/etc/nginx/conf.d/default.conf:ro
+      - ./dist-test:/usr/share/nginx/html:ro
+    networks:
+      - bso-test
+    depends_on:
+      bso-api-test:
+        condition: service_healthy
+
+volumes:
+  bso-db-prod:
+    name: bso-db-prod
+  bso-logs-prod:
+    name: bso-logs-prod
+  bso-db-test:
+    name: bso-db-test
+  bso-logs-test:
+    name: bso-logs-test
+
+networks:
+  bso-prod:
+    name: bso-prod
+    driver: bridge
+  bso-test:
+    name: bso-test
+    driver: bridge

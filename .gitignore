@@ -1,9 +1,11 @@
 node_modules/
 dist/
+dist-prod/
+dist-test/
 dist-ssr/
 *.local
 .env
-.env.*
-!.env.example
+.env.prod
+.env.test
 .DS_Store
 Thumbs.db

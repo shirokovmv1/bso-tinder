@@ -150,4 +150,49 @@ router.post('/verify-otp', otpLimiter, (req, res) => {
   })
 })
 
+// POST /api/auth/magic-login — вход по одноразовой/бессрочной magic-ссылке
+router.post('/magic-login', (req, res) => {
+  const { token } = req.body
+  if (!token || typeof token !== 'string') {
+    return res.status(400).json({ error: 'Токен обязателен' })
+  }
+
+  const link = db.prepare('SELECT * FROM magic_links WHERE magic_token = ?').get(token.trim())
+  if (!link) {
+    logger.warn('Magic login: invalid token', { token: token.slice(0, 8) + '…' })
+    return res.status(400).json({ error: 'Ссылка недействительна' })
+  }
+
+  const user = db.prepare('SELECT * FROM users WHERE id = ?').get(link.user_id)
+  if (!user) {
+    return res.status(404).json({ error: 'Пользователь не найден' })
+  }
+  if (user.is_banned) {
+    logger.warn('Magic login: banned user', { userId: user.id, email: user.email })
+    return res.status(403).json({ error: 'Учётная запись заблокирована' })
+  }
+
+  const jwt_token = jwt.sign(
+    { userId: user.id, email: user.email, isAdmin: !!user.is_admin },
+    JWT_SECRET,
+    { expiresIn: JWT_EXPIRES_IN }
+  )
+
+  logger.info('Magic link login success', { userId: user.id, email: user.email })
+
+  res.json({
+    token: jwt_token,
+    user: {
+      id: user.id,
+      email: user.email,
+      name: user.name,
+      department: user.department,
+      avatarUrl: user.avatar_url,
+      badgeId: user.badge_id,
+      onboardingDone: !!user.onboarding_done,
+      isAdmin: !!user.is_admin,
+    },
+  })
+})
+
 module.exports = router

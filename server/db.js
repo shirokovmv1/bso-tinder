@@ -2,7 +2,7 @@ const Database = require('better-sqlite3')
 const path = require('path')
 const logger = require('./logger')
 
-const DB_PATH = path.join(__dirname, 'data.db')
+const DB_PATH = process.env.DB_PATH || path.join(__dirname, 'data.db')
 const db = new Database(DB_PATH)
 
 db.pragma('journal_mode = WAL')
@@ -59,6 +59,14 @@ db.exec(`
     key TEXT PRIMARY KEY,
     value TEXT NOT NULL,
     updated_at TEXT DEFAULT (datetime('now'))
+  );
+
+  CREATE TABLE IF NOT EXISTS magic_links (
+    id          TEXT PRIMARY KEY,
+    user_id     TEXT NOT NULL UNIQUE,
+    magic_token TEXT NOT NULL UNIQUE,
+    created_at  TEXT DEFAULT (datetime('now')),
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
   );
 `)
 
