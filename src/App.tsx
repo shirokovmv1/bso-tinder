@@ -58,6 +58,22 @@ function MagicLinkHandler({ children }: { children: React.ReactNode }) {
   return <>{children}</>
 }
 
+function SessionBootstrap() {
+  const { token, setCurrentUser, logout } = useAppStore()
+  const location = useLocation()
+
+  useEffect(() => {
+    const params = new URLSearchParams(location.search)
+    if (!token || params.get('magic')) return
+
+    api.getMe()
+      .then((user) => setCurrentUser(user))
+      .catch(() => logout())
+  }, [location.search, logout, setCurrentUser, token])
+
+  return null
+}
+
 // ── AuthGuard ────────────────────────────────────────────────────────────────
 function AuthGuard({ children }: { children: React.ReactNode }) {
   const { token, currentUser } = useAppStore()
@@ -99,6 +115,7 @@ export default function App() {
   return (
     <BrowserRouter>
       <MagicLinkHandler>
+        <SessionBootstrap />
         <Routes>
           <Route path="/"           element={<RootRedirect />} />
           <Route path="/login"      element={<LoginPage />} />

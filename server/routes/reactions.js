@@ -14,6 +14,24 @@ const reactionsLimiter = rateLimit({
   message: { error: 'Слишком много реакций. Подождите немного.' },
 })
 
+const toggleReactionTx = db.transaction((fromUserId, toUserId, reactionTypeId) => {
+  const existing = db.prepare(
+    'SELECT id FROM reactions WHERE from_user_id = ? AND to_user_id = ? AND emoji_type = ?'
+  ).get(fromUserId, toUserId, reactionTypeId)
+
+  if (existing) {
+    db.prepare('DELETE FROM reactions WHERE id = ?').run(existing.id)
+    return { action: 'removed' }
+  }
+
+  const id = uuidv4()
+  db.prepare(
+    'INSERT INTO reactions (id, from_user_id, to_user_id, emoji_type) VALUES (?, ?, ?, ?)'
+  ).run(id, fromUserId, toUserId, reactionTypeId)
+
+  return { action: 'added', id }
+})
+
 // GET /api/reactions/types — публичный справочник типов реакций
 router.get('/types', verifyJWT, (_req, res) => {
   res.json(db.prepare(
@@ -60,23 +78,25 @@ router.post('/', verifyJWT, reactionsLimiter, (req, res) => {
   const rt = db.prepare('SELECT id FROM reaction_types WHERE id = ? AND is_active = 1').get(reaction_type_id)
   if (!rt) return res.status(400).json({ error: 'Тип реакции не найден' })
 
-  // Если уже отправлена такая же — удаляем (toggle)
-  const existing = db.prepare(
-    'SELECT id FROM reactions WHERE from_user_id = ? AND to_user_id = ? AND emoji_type = ?'
-  ).get(req.user.id, to_user_id, reaction_type_id)
-
-  if (existing) {
-    db.prepare('DELETE FROM reactions WHERE id = ?').run(existing.id)
-    return res.json({ action: 'removed' })
+  try {
+    const result = toggleReactionTx(req.user.id, to_user_id, reaction_type_id)
+    logger.info('Reaction toggled', {
+      from: req.user.id,
+      to: to_user_id,
+      type: reaction_type_id,
+      action: result.action,
+    })
+    return res.status(result.action === 'added' ? 201 : 200).json(result)
+  } catch (err) {
+    const isUniqueViolation = err && (err.code === 'SQLITE_CONSTRAINT_UNIQUE' || String(err.message || '').includes('UNIQUE constraint failed'))
+    if (isUniqueViolation) {
+      // Fallback для редкой гонки: считаем реакцию добавленной и не падаем в 500.
+      logger.warn('Reaction unique conflict handled', { from: req.user.id, to: to_user_id, type: reaction_type_id })
+      return res.status(200).json({ action: 'added' })
+    }
+    logger.error('Reaction toggle failed', { error: err.message, from: req.user.id, to: to_user_id, type: reaction_type_id })
+    return res.status(500).json({ error: 'Не удалось обновить реакцию' })
   }
-
-  const id = uuidv4()
-  db.prepare(
-    'INSERT INTO reactions (id, from_user_id, to_user_id, emoji_type) VALUES (?, ?, ?, ?)'
-  ).run(id, req.user.id, to_user_id, reaction_type_id)
-
-  logger.info('Reaction sent', { from: req.user.id, to: to_user_id, type: reaction_type_id })
-  res.status(201).json({ action: 'added', id })
 })
 
 module.exports = router

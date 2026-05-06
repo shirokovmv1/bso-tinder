@@ -1,5 +1,6 @@
 const express = require('express')
 const router = express.Router()
+const { v4: uuidv4 } = require('uuid')
 const { verifyJWT } = require('../middleware/auth')
 const db = require('../db')
 const logger = require('../logger')
@@ -7,6 +8,34 @@ const ai = require('../ai')
 
 // Поля хобби для JOIN-запросов
 const HOBBY_FIELDS = 'h.id, h.parent_id, h.label, h.emoji, h.sort_order, h.is_active'
+const MIN_NAME_LENGTH = 2
+const MAX_DEPARTMENT_LENGTH = 80
+const MAX_AVATAR_DATA_URL_LENGTH = 450000
+
+function isValidAvatarValue(value) {
+  if (typeof value !== 'string') return false
+  const trimmed = value.trim()
+  if (!trimmed) return true
+  if (trimmed.startsWith('data:image/')) return trimmed.length <= MAX_AVATAR_DATA_URL_LENGTH
+  if (trimmed.startsWith('http://') || trimmed.startsWith('https://')) return trimmed.length <= 2048
+  return false
+}
+
+const toggleReactionTx = db.transaction((fromUserId, toUserId, reactionTypeId) => {
+  const existing = db.prepare(
+    'SELECT id FROM reactions WHERE from_user_id = ? AND to_user_id = ? AND emoji_type = ?'
+  ).get(fromUserId, toUserId, reactionTypeId)
+
+  if (existing) {
+    db.prepare('DELETE FROM reactions WHERE id = ?').run(existing.id)
+    return { action: 'removed' }
+  }
+
+  const id = uuidv4()
+  db.prepare('INSERT INTO reactions (id, from_user_id, to_user_id, emoji_type) VALUES (?, ?, ?, ?)')
+    .run(id, fromUserId, toUserId, reactionTypeId)
+  return { action: 'added', id }
+})
 
 function getUserHobbies(userId) {
   return db.prepare(`
@@ -114,24 +143,19 @@ router.post('/:id/react', verifyJWT, (req, res) => {
   const rt = db.prepare('SELECT id FROM reaction_types WHERE id = ? AND is_active = 1').get(emoji_type)
   if (!rt) return res.status(400).json({ error: 'Тип реакции не найден' })
 
-  // toggle: если уже есть — удаляем
-  const existing = db.prepare(
-    'SELECT id FROM reactions WHERE from_user_id = ? AND to_user_id = ? AND emoji_type = ?'
-  ).get(req.user.id, toUserId, emoji_type)
-
-  if (existing) {
-    db.prepare('DELETE FROM reactions WHERE id = ?').run(existing.id)
-    logger.info('Reaction removed', { from: req.user.id, to: toUserId, type: emoji_type })
-    return res.json({ action: 'removed' })
+  try {
+    const result = toggleReactionTx(req.user.id, toUserId, emoji_type)
+    logger.info('Reaction toggled', { from: req.user.id, to: toUserId, type: emoji_type, action: result.action })
+    return res.status(result.action === 'added' ? 201 : 200).json(result)
+  } catch (err) {
+    const isUniqueViolation = err && (err.code === 'SQLITE_CONSTRAINT_UNIQUE' || String(err.message || '').includes('UNIQUE constraint failed'))
+    if (isUniqueViolation) {
+      logger.warn('Reaction unique conflict handled', { from: req.user.id, to: toUserId, type: emoji_type })
+      return res.status(200).json({ action: 'added' })
+    }
+    logger.error('Reaction toggle failed', { error: err.message, from: req.user.id, to: toUserId, type: emoji_type })
+    return res.status(500).json({ error: 'Не удалось обновить реакцию' })
   }
-
-  const { v4: uuidv4 } = require('uuid')
-  const id = uuidv4()
-  db.prepare('INSERT INTO reactions (id, from_user_id, to_user_id, emoji_type) VALUES (?, ?, ?, ?)')
-    .run(id, req.user.id, toUserId, emoji_type)
-
-  logger.info('Reaction added', { from: req.user.id, to: toUserId, type: emoji_type })
-  res.status(201).json({ action: 'added', id })
 })
 
 // PUT /api/users/:id — онбординг / обновление профиля
@@ -141,10 +165,36 @@ router.put('/:id', verifyJWT, async (req, res) => {
   }
 
   const existing = db.prepare('SELECT onboarding_done FROM users WHERE id = ?').get(req.user.id)
-  const { name, department, avatarUrl, badgeId, hobbyIds, gender, experience_months } = req.body
+  const {
+    name,
+    department,
+    avatarUrl,
+    avatar_url,
+    badgeId,
+    badge_id,
+    hobbyIds,
+    gender,
+    experience_months,
+  } = req.body
+  const normalizedAvatar = avatarUrl !== undefined ? avatarUrl : avatar_url
+  const normalizedBadgeId = badgeId !== undefined ? badgeId : badge_id
 
-  if (name !== undefined || department !== undefined || avatarUrl !== undefined ||
-      badgeId !== undefined || gender !== undefined || experience_months !== undefined) {
+  if (name !== undefined) {
+    if (typeof name !== 'string' || name.trim().length < MIN_NAME_LENGTH) {
+      return res.status(400).json({ error: `name должен быть строкой длиной не менее ${MIN_NAME_LENGTH} символов` })
+    }
+  }
+  if (department !== undefined) {
+    if (typeof department !== 'string' || department.trim().length < 2 || department.trim().length > MAX_DEPARTMENT_LENGTH) {
+      return res.status(400).json({ error: `department должен быть строкой длиной 2..${MAX_DEPARTMENT_LENGTH}` })
+    }
+  }
+  if (normalizedAvatar !== undefined && !isValidAvatarValue(normalizedAvatar)) {
+    return res.status(400).json({ error: 'avatar_url должен быть data:image/* (до 300KB) или http/https URL' })
+  }
+
+  if (name !== undefined || department !== undefined || normalizedAvatar !== undefined ||
+      normalizedBadgeId !== undefined || gender !== undefined || experience_months !== undefined) {
     db.prepare(`
       UPDATE users SET
         name               = COALESCE(?, name),
@@ -158,11 +208,11 @@ router.put('/:id', verifyJWT, async (req, res) => {
     `).run(
       name ?? null,
       department ?? null,
-      avatarUrl ?? null,
-      badgeId ?? null,
+      normalizedAvatar ?? null,
+      normalizedBadgeId ?? null,
       gender ?? null,
       experience_months !== undefined ? experience_months : null,
-      name, department,
+      name ?? null, department ?? null,
       req.user.id
     )
   }

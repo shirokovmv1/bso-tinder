@@ -22,6 +22,7 @@ export default function FeedPage() {
   const [depts, setDepts] = useState<ApiDepartment[]>([])
   const [reactionTypes, setReactionTypes] = useState<ApiReactionType[]>([])
   const [sentReactions, setSentReactions] = useState<Record<string, Set<string>>>({})
+  const [pendingReactions, setPendingReactions] = useState<Record<string, boolean>>({})
   const navigate = useNavigate()
 
   useEffect(() => {
@@ -39,6 +40,9 @@ export default function FeedPage() {
   }, [setEmployees])
 
   const handleReaction = useCallback(async (toUserId: string, typeId: string) => {
+    const key = `${toUserId}:${typeId}`
+    if (pendingReactions[key]) return
+    setPendingReactions(prev => ({ ...prev, [key]: true }))
     try {
       const res = await api.sendReaction(toUserId, typeId)
       setSentReactions(prev => {
@@ -50,7 +54,10 @@ export default function FeedPage() {
         return next
       })
     } catch { /* ignore */ }
-  }, [])
+    finally {
+      setPendingReactions(prev => ({ ...prev, [key]: false }))
+    }
+  }, [pendingReactions])
 
   const deptTabs = ['Все', ...depts.map(d => d.name)]
 
@@ -178,18 +185,21 @@ export default function FeedPage() {
                   <div className="flex gap-2 flex-wrap">
                     {reactionTypes.map(rt => {
                       const active = sentReactions[selected.id]?.has(rt.id)
+                      const reactionKey = `${selected.id}:${rt.id}`
+                      const isPending = !!pendingReactions[reactionKey]
                       return (
                         <button
                           key={rt.id}
+                          disabled={isPending}
                           onClick={() => handleReaction(selected.id, rt.id)}
-                          className={`flex items-center gap-1.5 px-3 py-2 rounded-full text-sm font-bold transition-all border ${
+                          className={`flex items-center gap-1.5 px-3 py-2 rounded-full text-sm font-bold transition-all border disabled:opacity-60 disabled:cursor-not-allowed ${
                             active
                               ? 'bg-orange-500 border-transparent text-white'
                               : 'glass-1 border-white/10 text-white/70 hover:bg-white/10'
                           }`}
                         >
                           <span>{rt.emoji}</span>
-                          <span className="text-[12px]">{rt.label}</span>
+                          <span className="text-[12px]">{isPending ? '...' : rt.label}</span>
                         </button>
                       )
                     })}

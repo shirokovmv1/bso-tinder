@@ -6,12 +6,59 @@ import { useAppStore } from '@/store/useAppStore'
 import { assignBadge } from '@/data/badges'
 
 type Step = 1 | 2 | 3
+const MAX_AVATAR_SIDE = 256
+const MAX_AVATAR_BYTES = 300 * 1024
+
+function dataUrlByteSize(dataUrl: string) {
+  const base64 = dataUrl.split(',')[1] ?? ''
+  return Math.ceil((base64.length * 3) / 4)
+}
+
+function loadImageFromFile(file: File): Promise<HTMLImageElement> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onload = () => {
+      const img = new Image()
+      img.onload = () => resolve(img)
+      img.onerror = () => reject(new Error('Не удалось прочитать изображение'))
+      img.src = String(reader.result ?? '')
+    }
+    reader.onerror = () => reject(new Error('Не удалось прочитать файл'))
+    reader.readAsDataURL(file)
+  })
+}
+
+async function buildCompactAvatarDataUrl(file: File) {
+  const image = await loadImageFromFile(file)
+  const ratio = Math.min(MAX_AVATAR_SIDE / image.width, MAX_AVATAR_SIDE / image.height, 1)
+  const width = Math.max(1, Math.round(image.width * ratio))
+  const height = Math.max(1, Math.round(image.height * ratio))
+
+  const canvas = document.createElement('canvas')
+  canvas.width = width
+  canvas.height = height
+  const ctx = canvas.getContext('2d')
+  if (!ctx) throw new Error('Canvas недоступен')
+  ctx.drawImage(image, 0, 0, width, height)
+
+  let quality = 0.82
+  let dataUrl = canvas.toDataURL('image/jpeg', quality)
+  while (dataUrlByteSize(dataUrl) > MAX_AVATAR_BYTES && quality > 0.4) {
+    quality -= 0.08
+    dataUrl = canvas.toDataURL('image/jpeg', quality)
+  }
+  if (dataUrlByteSize(dataUrl) > MAX_AVATAR_BYTES) {
+    throw new Error('Аватар слишком большой после сжатия. Выберите другое изображение.')
+  }
+  return dataUrl
+}
 
 export default function OnboardingPage() {
   const [step, setStep] = useState<Step>(1)
   const [allHobbies, setAllHobbies] = useState<ApiHobby[]>([])
   const [departments, setDepartments] = useState<ApiDepartment[]>([])
   const [saving, setSaving] = useState(false)
+  const [avatarError, setAvatarError] = useState('')
   const [gender, setGender] = useState<'m' | 'f' | ''>('')
   const [expMonths, setExpMonths] = useState('')
 
@@ -25,12 +72,18 @@ export default function OnboardingPage() {
     api.getDepartments().then(setDepartments).catch(() => {})
   }, [])
 
-  function onFile(e: React.ChangeEvent<HTMLInputElement>) {
+  async function onFile(e: React.ChangeEvent<HTMLInputElement>) {
     const f = e.target.files?.[0]
     if (!f) return
-    const r = new FileReader()
-    r.onload = () => setPhotoUrl(r.result as string)
-    r.readAsDataURL(f)
+    try {
+      setAvatarError('')
+      const compactDataUrl = await buildCompactAvatarDataUrl(f)
+      setPhotoUrl(compactDataUrl)
+    } catch (err) {
+      setAvatarError(err instanceof Error ? err.message : 'Не удалось обработать изображение')
+    } finally {
+      e.target.value = ''
+    }
   }
 
   async function handleFinish() {
@@ -108,6 +161,9 @@ export default function OnboardingPage() {
                   </div>
                 </div>
               </div>
+              {!!avatarError && (
+                <p className="mt-2 text-[12px] text-red-300">{avatarError}</p>
+              )}
 
               {/* Пол + стаж */}
               <div className="mt-4 flex gap-3">

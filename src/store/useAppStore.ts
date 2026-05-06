@@ -47,6 +47,20 @@ interface AppState {
   clearMatch: () => void
 }
 
+function toPersistedUserLite(user: ApiUser | null) {
+  if (!user) return null
+  return {
+    id: user.id,
+    email: user.email,
+    is_admin: user.is_admin,
+    onboarding_done: user.onboarding_done,
+    name: user.name ?? null,
+    department: user.department ?? null,
+    avatar_url: null,
+    badge_id: user.badge_id ?? null,
+  } as ApiUser
+}
+
 export const useAppStore = create<AppState>()(
   persist(
     (set, get) => ({
@@ -99,7 +113,7 @@ export const useAppStore = create<AppState>()(
         })
       },
 
-      setCurrentUser: (user) => set({ currentUser: user }),
+      setCurrentUser: (user) => set({ currentUser: user, isAdmin: !!user.is_admin }),
       setEmployees: (list) => set({ employees: list }),
       setSearchQuery: (q) => set({ searchQuery: q }),
       setDepartmentFilter: (dept) => set({ departmentFilter: dept }),
@@ -116,12 +130,11 @@ export const useAppStore = create<AppState>()(
       name: 'bso-app-store',
       partialize: (s) => ({
         token: s.token,
-        currentUser: s.currentUser,
+        currentUser: toPersistedUserLite(s.currentUser),
         isAdmin: s.isAdmin,
         onboardingStep: s.onboardingStep,
         nameInput: s.nameInput,
         departmentInput: s.departmentInput,
-        photoUrl: s.photoUrl,
         selectedHobbies: s.selectedHobbies,
       }),
     }
