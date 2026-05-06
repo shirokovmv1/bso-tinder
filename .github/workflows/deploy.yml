@@ -8,16 +8,12 @@ on:
 jobs:
   deploy:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
-    env:
-      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+    timeout-minutes: 15
 
     steps:
       # ── 1. Checkout ──────────────────────────────────────────────────────────
       - name: Checkout code
         uses: actions/checkout@v4
-        env:
-          FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
       # ── 2. Build frontend × 2 ───────────────────────────────────────────────
       - name: Setup Node.js
@@ -55,7 +51,7 @@ jobs:
             ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }} \
             "which rsync || apt-get install -y rsync -q"
 
-      - name: Upload frontend builds
+      - name: Upload all changed files
         run: |
           rsync -az --delete \
             -e "ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=no" \
@@ -63,18 +59,12 @@ jobs:
           rsync -az --delete \
             -e "ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=no" \
             dist-test/ ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}:/var/www/bso-tinder/dist-test/
-
-      - name: Upload backend source
-        run: |
           rsync -az --delete \
             --exclude='node_modules' \
             --exclude='*.db' \
             --exclude='logs/' \
             -e "ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=no" \
             server/ ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}:/var/www/bso-tinder/server/
-
-      - name: Upload docker-compose and configs
-        run: |
           rsync -az \
             -e "ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=no" \
             docker-compose.yml Dockerfile nginx.prod.conf nginx.test.conf \
@@ -86,22 +76,13 @@ jobs:
           ssh -i ~/.ssh/deploy_key \
             -o StrictHostKeyChecking=no \
             ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }} \
-            "cd /var/www/bso-tinder && docker compose build --no-cache bso-api-prod bso-api-test && docker compose up -d"
+            "cd /var/www/bso-tinder && docker compose build bso-api-prod bso-api-test && docker compose up -d"
 
       # ── 6. Smoke test ────────────────────────────────────────────────────────
-      - name: Wait for health checks
-        run: sleep 15
-
-      - name: Smoke test PROD
+      - name: Smoke test
         run: |
+          sleep 12
           ssh -i ~/.ssh/deploy_key \
             -o StrictHostKeyChecking=no \
             ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }} \
-            "curl -sf http://localhost:80/api/health | grep -q 'ok'"
-
-      - name: Smoke test TEST
-        run: |
-          ssh -i ~/.ssh/deploy_key \
-            -o StrictHostKeyChecking=no \
-            ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }} \
-            "curl -sf http://localhost:8080/api/health | grep -q 'ok'"
+            "curl -sf http://localhost:80/api/health | grep -q 'ok' && echo 'PROD OK' && curl -sf http://localhost:8080/api/health | grep -q 'ok' && echo 'TEST OK'"
