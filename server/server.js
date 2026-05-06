@@ -30,10 +30,9 @@ app.use('/api/match',     require('./routes/match'))
 app.use('/api/admin',     require('./routes/admin'))
 app.use('/api/reactions', require('./routes/reactions'))
 
-// Публичный справочник отделов (для онбординга)
-const { verifyJWT } = require('./middleware/auth')
+// Публичный справочник отделов (без авторизации — нужен до онбординга)
 const db = require('./db')
-app.get('/api/departments', verifyJWT, (_req, res) => {
+app.get('/api/departments', (_req, res) => {
   res.json(db.prepare(
     'SELECT id, name, sort_order, is_active FROM departments WHERE is_active = 1 ORDER BY sort_order, name'
   ).all())

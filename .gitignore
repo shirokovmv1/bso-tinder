@@ -9,3 +9,5 @@ dist-ssr/
 .env.test
 .DS_Store
 Thumbs.db
+# dev test/debug scripts (могут содержать секреты)
+test-run.mjs

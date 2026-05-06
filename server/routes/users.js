@@ -50,7 +50,7 @@ router.get('/', verifyJWT, (req, res) => {
            gender, experience_months, pitch, badge_title, badge_emoji, badge_reason,
            onboarding_done, created_at
     FROM users
-    WHERE is_banned = 0 AND onboarding_done = 1
+    WHERE is_banned = 0 AND onboarding_done = 1 AND is_admin = 0
     ORDER BY name
   `).all()
 

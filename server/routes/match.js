@@ -78,11 +78,16 @@ router.post('/', verifyJWT, (req, res) => {
   const aHobbies = getHobbies(userAId)
   const bHobbies = getHobbies(userBId)
 
-  if (!aHobbies.length || !bHobbies.length) {
-    return res.status(400).json({ error: 'У одного из пользователей нет хобби' })
-  }
-
-  const result = computeMatch(aHobbies, bHobbies)
+  // Нет хобби — не ошибка, просто score=0 и дефолтный айсбрейкер
+  const result = (aHobbies.length && bHobbies.length)
+    ? computeMatch(aHobbies, bHobbies)
+    : {
+        score: 0,
+        shared: [],
+        uniqueA: aHobbies,
+        uniqueB: bHobbies,
+        icebreaker: pickRandom(ICEBREAKERS.low)(),
+      }
 
   const matchId = uuidv4()
   db.prepare(`
