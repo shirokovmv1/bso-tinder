@@ -155,3 +155,46 @@ curl http://158.255.5.199/api/health
 - В localStorage больше не сохраняется полный тяжёлый профиль пользователя.
 - Persist хранит облегчённый `currentUser` (id/email/is_admin/onboarding_done и базовые поля), без крупных base64-данных аватара.
 - После старта приложения при наличии токена выполняется `getMe()`, и store обновляется актуальными данными пользователя.
+
+## Database & Performance
+
+### Индексы
+
+На старте приложения создаются индексы (`CREATE INDEX IF NOT EXISTS`) для горячих запросов:
+
+- `reactions(to_user_id, from_user_id)`
+- `matches(user_a_id, user_b_id)`
+- `user_hobbies(user_id, hobby_id)`
+- `users(is_admin, department)`
+
+### Оптимизация `GET /api/users` (без N+1)
+
+Маршрут переведён на batched-паттерн:
+- 1 запрос на список пользователей;
+- 1 запрос на агрегацию реакций (через `IN (...)`);
+- 1 запрос на все хобби пользователей (через `IN (...)`) и сборка в map на уровне Node.js.
+
+Это устраняет N+1 запросы к `user_hobbies/hobbies` при росте числа пользователей.
+
+### Каскадное удаление в `matches`
+
+Если в старой БД таблица `matches` была без FK, при старте выполняется миграция:
+- пересоздание `matches` с `FOREIGN KEY ... ON DELETE CASCADE` для `user_a_id` и `user_b_id`;
+- перенос только валидных строк (без orphan user references).
+
+### SQLite backup (ежедневно)
+
+В `docker-compose.yml` добавлены сервисы:
+- `bso-backup-prod`
+- `bso-backup-test`
+
+Логика:
+- раз в сутки выполняется:
+  - `sqlite3 /data/data.db ".backup '/backups/bso-tinder-<env>-YYYY-MM-DD.db'"`;
+- хранится 7 последних backup-файлов (остальные удаляются ротацией).
+
+Ручная cron-альтернатива (если без backup-сервиса):
+
+```bash
+sqlite3 /data/data.db ".backup '/backups/bso-tinder-$(date +%F).db'" && ls -1t /backups/bso-tinder-*.db | tail -n +8 | xargs -r rm -f
+```

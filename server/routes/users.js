@@ -46,6 +46,26 @@ function getUserHobbies(userId) {
   `).all(userId)
 }
 
+function getUserHobbiesBatch(userIds) {
+  if (!userIds.length) return {}
+  const placeholders = userIds.map(() => '?').join(',')
+  const rows = db.prepare(`
+    SELECT uh.user_id, ${HOBBY_FIELDS}
+    FROM user_hobbies uh
+    JOIN hobbies h ON h.id = uh.hobby_id
+    WHERE uh.user_id IN (${placeholders})
+    ORDER BY h.sort_order, h.label
+  `).all(...userIds)
+
+  const map = {}
+  for (const row of rows) {
+    if (!map[row.user_id]) map[row.user_id] = []
+    const { user_id, ...hobby } = row
+    map[user_id].push(hobby)
+  }
+  return map
+}
+
 // Агрегированные реакции для одного или нескольких пользователей
 function getReactionCounts(userIds) {
   if (!userIds.length) return {}
@@ -83,11 +103,13 @@ router.get('/', verifyJWT, (req, res) => {
     ORDER BY name
   `).all()
 
-  const reactionMap = getReactionCounts(users.map(u => u.id))
+  const userIds = users.map(u => u.id)
+  const reactionMap = getReactionCounts(userIds)
+  const hobbiesMap = getUserHobbiesBatch(userIds)
 
   const result = users.map(u => ({
     ...u,
-    hobbies: getUserHobbies(u.id),
+    hobbies: hobbiesMap[u.id] ?? [],
     reaction_counts: reactionMap[u.id] ?? [],
   }))
 

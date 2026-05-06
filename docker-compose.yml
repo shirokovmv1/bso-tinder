@@ -78,15 +78,46 @@ services:
       bso-api-test:
         condition: service_healthy
 
+  # ── SQLite backups (ежедневно, хранить последние N файлов) ──────────────────
+  bso-backup-prod:
+    image: keinos/sqlite3:latest
+    container_name: bso-backup-prod
+    restart: unless-stopped
+    volumes:
+      - bso-db-prod:/data:ro
+      - bso-backups-prod:/backups
+    entrypoint: /bin/sh
+    command: -c "while true; do ts=$$(date +%F); sqlite3 /data/data.db \".backup '/backups/bso-tinder-prod-$${ts}.db'\"; ls -1t /backups/bso-tinder-prod-*.db | tail -n +8 | xargs -r rm -f; sleep 86400; done"
+    depends_on:
+      bso-api-prod:
+        condition: service_healthy
+
+  bso-backup-test:
+    image: keinos/sqlite3:latest
+    container_name: bso-backup-test
+    restart: unless-stopped
+    volumes:
+      - bso-db-test:/data:ro
+      - bso-backups-test:/backups
+    entrypoint: /bin/sh
+    command: -c "while true; do ts=$$(date +%F); sqlite3 /data/data.db \".backup '/backups/bso-tinder-test-$${ts}.db'\"; ls -1t /backups/bso-tinder-test-*.db | tail -n +8 | xargs -r rm -f; sleep 86400; done"
+    depends_on:
+      bso-api-test:
+        condition: service_healthy
+
 volumes:
   bso-db-prod:
     name: bso-db-prod
   bso-logs-prod:
     name: bso-logs-prod
+  bso-backups-prod:
+    name: bso-backups-prod
   bso-db-test:
     name: bso-db-test
   bso-logs-test:
     name: bso-logs-test
+  bso-backups-test:
+    name: bso-backups-test
 
 networks:
   bso-prod:

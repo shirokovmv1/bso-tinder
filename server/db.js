@@ -56,6 +56,50 @@ db.exec(`
   );
 `)
 
+function ensureMatchesCascadeMigration() {
+  const hasMatchesTable = db.prepare(
+    "SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'matches'"
+  ).get()
+  if (!hasMatchesTable) return
+
+  const fkList = db.pragma('foreign_key_list(matches)')
+  if (fkList.length >= 2) return
+
+  logger.info('Migrating matches table to add ON DELETE CASCADE FKs...')
+  db.pragma('foreign_keys = OFF')
+
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS matches_new (
+      id TEXT PRIMARY KEY,
+      user_a_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      user_b_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      score INTEGER NOT NULL,
+      icebreaker TEXT,
+      shared_hobby_ids TEXT,
+      created_at TEXT DEFAULT (datetime('now')),
+      CHECK (user_a_id != user_b_id)
+    );
+  `)
+
+  // Переносим только валидные записи, где оба пользователя существуют.
+  db.exec(`
+    INSERT INTO matches_new (id, user_a_id, user_b_id, score, icebreaker, shared_hobby_ids, created_at)
+    SELECT m.id, m.user_a_id, m.user_b_id, m.score, m.icebreaker, m.shared_hobby_ids, m.created_at
+    FROM matches m
+    JOIN users ua ON ua.id = m.user_a_id
+    JOIN users ub ON ub.id = m.user_b_id
+    WHERE m.user_a_id != m.user_b_id;
+  `)
+
+  db.exec('DROP TABLE matches;')
+  db.exec('ALTER TABLE matches_new RENAME TO matches;')
+  db.pragma('foreign_keys = ON')
+
+  logger.info('Matches migration complete')
+}
+
+ensureMatchesCascadeMigration()
+
 // ── Безопасное добавление колонок в users ────────────────────────────────────
 
 const userCols = db.pragma('table_info(users)').map(c => c.name)
@@ -274,6 +318,21 @@ db.exec(`
     UNIQUE (from_user_id, to_user_id, emoji_type),
     CHECK (from_user_id != to_user_id)
   );
+`)
+
+// ── Индексы для горячих запросов ─────────────────────────────────────────────
+db.exec(`
+  CREATE INDEX IF NOT EXISTS idx_reactions_to_from
+  ON reactions(to_user_id, from_user_id);
+
+  CREATE INDEX IF NOT EXISTS idx_matches_user_pair
+  ON matches(user_a_id, user_b_id);
+
+  CREATE INDEX IF NOT EXISTS idx_user_hobbies_user_hobby
+  ON user_hobbies(user_id, hobby_id);
+
+  CREATE INDEX IF NOT EXISTS idx_users_admin_department
+  ON users(is_admin, department);
 `)
 
 // ── Миграция magic_links: добавить поля TTL и одноразовости ─────────────────
