@@ -15,9 +15,12 @@ const TONES = [
 const toneFor = (id: string) => TONES[id.charCodeAt(0) % TONES.length]
 
 export default function FeedPage() {
+  const appEnv = import.meta.env.VITE_APP_ENV ?? 'prod'
   const { setEmployees, setSearchQuery, setDepartmentFilter, searchQuery, departmentFilter } = useAppStore()
   const filtered = useAppStore(selectFilteredEmployees)
   const [loading, setLoading] = useState(true)
+  const [loadError, setLoadError] = useState('')
+  const [healthStatus, setHealthStatus] = useState<'checking' | 'ok' | 'offline'>('checking')
   const [selected, setSelected] = useState<ApiUser | null>(null)
   const [depts, setDepts] = useState<ApiDepartment[]>([])
   const [reactionTypes, setReactionTypes] = useState<ApiReactionType[]>([])
@@ -25,19 +28,50 @@ export default function FeedPage() {
   const [pendingReactions, setPendingReactions] = useState<Record<string, boolean>>({})
   const navigate = useNavigate()
 
-  useEffect(() => {
-    api.getUsers().then(setEmployees).finally(() => setLoading(false))
-    api.getDepartments().then(setDepts).catch(() => {})
-    api.getReactionTypes().then(setReactionTypes).catch(() => {})
-    api.getMyReactionsSent().then(rows => {
-      const map: Record<string, Set<string>> = {}
-      for (const r of rows) {
-        if (!map[r.to_user_id]) map[r.to_user_id] = new Set()
-        map[r.to_user_id].add(r.emoji_type)
-      }
-      setSentReactions(map)
-    }).catch(() => {})
+  const loadFeedData = useCallback(async () => {
+    setLoading(true)
+    setLoadError('')
+    try {
+      const users = await api.getUsers()
+      setEmployees(users)
+      api.getDepartments().then(setDepts).catch(() => {})
+      api.getReactionTypes().then(setReactionTypes).catch(() => {})
+      api.getMyReactionsSent().then(rows => {
+        const map: Record<string, Set<string>> = {}
+        for (const r of rows) {
+          if (!map[r.to_user_id]) map[r.to_user_id] = new Set()
+          map[r.to_user_id].add(r.emoji_type)
+        }
+        setSentReactions(map)
+      }).catch(() => {})
+    } catch (err) {
+      setLoadError(err instanceof Error ? err.message : 'Не удалось загрузить ленту')
+    } finally {
+      setLoading(false)
+    }
   }, [setEmployees])
+
+  useEffect(() => {
+    loadFeedData()
+  }, [loadFeedData])
+
+  useEffect(() => {
+    let active = true
+    const checkHealth = async () => {
+      try {
+        await api.getHealth()
+        if (active) setHealthStatus('ok')
+      } catch {
+        if (active) setHealthStatus('offline')
+      }
+    }
+    checkHealth()
+    const timer = window.setInterval(checkHealth, 30000)
+    return () => {
+      active = false
+      window.clearInterval(timer)
+    }
+  }, [])
 
   const handleReaction = useCallback(async (toUserId: string, typeId: string) => {
     const key = `${toUserId}:${typeId}`
@@ -73,6 +107,16 @@ export default function FeedPage() {
             <div className="leading-tight">
               <div className="text-[15px] font-black tracking-tight">Своя команда</div>
               <div className="text-[9px] font-black uppercase tracking-[0.14em] text-white/55">строим команду</div>
+            </div>
+            <div className={`px-2 py-1 rounded-full text-[9px] font-black uppercase tracking-[0.08em] border ${
+              appEnv === 'test'
+                ? 'text-yellow-300 border-yellow-300/50 bg-yellow-500/10'
+                : 'text-emerald-300 border-emerald-300/50 bg-emerald-500/10'
+            }`}>
+              {appEnv}
+            </div>
+            <div className={`text-[10px] font-bold ${healthStatus === 'ok' ? 'text-emerald-300' : healthStatus === 'offline' ? 'text-red-300' : 'text-white/50'}`}>
+              {healthStatus === 'ok' ? 'Сервер OK' : healthStatus === 'offline' ? 'Нет связи' : 'Проверка...'}
             </div>
           </div>
           <button
@@ -119,6 +163,17 @@ export default function FeedPage() {
 
       {/* Cards */}
       <div className="mx-auto w-full max-w-md px-5 py-4 pb-28 flex-1 space-y-3 overflow-y-auto scrollbar-none">
+        {!!loadError && (
+          <div className="glass-1 rounded-2xl p-4 border border-red-400/30">
+            <p className="text-[13px] font-bold text-red-300 mb-3">{loadError}</p>
+            <button
+              onClick={loadFeedData}
+              className="px-3 py-2 rounded-full text-[12px] font-bold bg-orange-500/20 border border-orange-500/40 text-orange-300"
+            >
+              Попробовать снова
+            </button>
+          </div>
+        )}
         {loading && Array.from({ length: 6 }).map((_, i) => (
           <div key={i} className="glass-1 rounded-2xl p-3.5 h-24 animate-pulse" />
         ))}

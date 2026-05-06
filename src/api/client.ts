@@ -2,6 +2,18 @@ import { useAppStore } from '@/store/useAppStore'
 
 const BASE = '/api'
 
+function normalizeUser(raw: any): ApiUser {
+  return {
+    ...raw,
+    avatar_url: raw?.avatar_url ?? raw?.avatarUrl ?? null,
+    badge_id: raw?.badge_id ?? raw?.badgeId ?? null,
+    onboarding_done: raw?.onboarding_done ?? raw?.onboardingDone ?? 0,
+    is_admin: raw?.is_admin ?? raw?.isAdmin ?? 0,
+    experience_months: raw?.experience_months ?? raw?.experienceMonths,
+    reaction_counts: raw?.reaction_counts ?? raw?.reactionCounts,
+  } as ApiUser
+}
+
 async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
   const token = useAppStore.getState().token
   const headers: Record<string, string> = {
@@ -14,7 +26,7 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
 
   if (res.status === 401) {
     useAppStore.getState().logout()
-    window.location.href = '/login'
+    window.dispatchEvent(new CustomEvent('app:unauthorized'))
     throw new Error('Unauthorized')
   }
 
@@ -26,9 +38,9 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
 export const api = {
   // Auth — TEST: упрощённый вход admin/admin
   devLogin: (login: string, password: string) =>
-    request<{ token: string; user: ApiUser }>('/auth/dev-login', {
+    request<{ token: string; user: any }>('/auth/dev-login', {
       method: 'POST', body: JSON.stringify({ login, password }),
-    }),
+    }).then((res) => ({ ...res, user: normalizeUser(res.user) })),
 
   // Auth
   sendOtp:   (email: string) =>
@@ -37,22 +49,23 @@ export const api = {
     }),
 
   verifyOtp: (email: string, code: string) =>
-    request<{ token: string; user: ApiUser }>('/auth/verify-otp', {
+    request<{ token: string; user: any }>('/auth/verify-otp', {
       method: 'POST', body: JSON.stringify({ email, code }),
-    }),
+    }).then((res) => ({ ...res, user: normalizeUser(res.user) })),
 
   magicLogin: (token: string) =>
-    request<{ token: string; user: ApiUser }>('/auth/magic-login', {
+    request<{ token: string; user: any }>('/auth/magic-login', {
       method: 'POST', body: JSON.stringify({ token }),
-    }),
+    }).then((res) => ({ ...res, user: normalizeUser(res.user) })),
 
   // Users
-  getUsers:  () => request<ApiUser[]>('/users'),
-  getMe:     () => request<ApiUser>('/users/me'),
-  getUser:   (id: string) => request<ApiUser>(`/users/${id}`),
+  getUsers:  () => request<any[]>('/users').then((rows) => rows.map(normalizeUser)),
+  getMe:     () => request<any>('/users/me').then(normalizeUser),
+  getUser:   (id: string) => request<any>(`/users/${id}`).then(normalizeUser),
   updateMe:  (id: string, body: Partial<ApiUser> & { hobbyIds?: string[] }) =>
-    request<ApiUser>(`/users/${id}`, { method: 'PUT', body: JSON.stringify(body) }),
+    request<any>(`/users/${id}`, { method: 'PUT', body: JSON.stringify(body) }).then(normalizeUser),
   getHobbies: () => request<ApiHobby[]>('/users/hobbies/all'),
+  getHealth:  () => request<{ status: string; db?: string; env?: string; error?: string }>('/health'),
 
   // Departments (public)
   getDepartments: () => request<ApiDepartment[]>('/departments'),
@@ -62,7 +75,7 @@ export const api = {
     request<ApiMatchResult>('/match', { method: 'POST', body: JSON.stringify({ userAId, userBId }) }),
 
   // ── Admin: Users ──────────────────────────────────────────────────────────
-  adminUsers:       () => request<ApiUser[]>('/admin/users'),
+  adminUsers:       () => request<any[]>('/admin/users').then((rows) => rows.map(normalizeUser)),
   adminBanUser:     (id: string) => request<{ id: string; is_banned: number }>(`/admin/users/${id}/ban`, { method: 'PATCH' }),
   adminDelUser:     (id: string) => request<{ success: boolean }>(`/admin/users/${id}`, { method: 'DELETE' }),
   adminLogs:        () => request<{ lines: string[] }>('/admin/logs'),

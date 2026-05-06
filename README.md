@@ -198,3 +198,22 @@ curl http://158.255.5.199/api/health
 ```bash
 sqlite3 /data/data.db ".backup '/backups/bso-tinder-$(date +%F).db'" && ls -1t /backups/bso-tinder-*.db | tail -n +8 | xargs -r rm -f
 ```
+
+## PWA & Offline
+
+- Service Worker теперь использует runtime caching (`NetworkFirst`) для:
+  - `GET /api/users`
+  - `GET /api/users/me`
+  - `GET /api/feed` (если endpoint используется в будущем)
+- При кратковременной потере сети фронт пытается взять последний успешный ответ из кэша.
+- Ограничение: оффлайн-фоллбек работает после первого успешного онлайн-запроса (когда ответ уже оказался в кэше).
+
+## Error Handling
+
+- Для ключевых потоков (`getUsers`, `computeMatch`, bootstrap `getMe`) добавлены явные error-state и человекочитаемые сообщения.
+- На экранах ленты и мэтча добавлена кнопка `Попробовать снова`.
+- Обработка `401` переведена на SPA-сценарий:
+  - logout в store;
+  - событие `app:unauthorized`;
+  - роутинг на `/login?session_expired=1` через `react-router` без полной перезагрузки страницы.
+- В интерфейс добавлен базовый индикатор связи с сервером (`/api/health`) и env-бейдж (`VITE_APP_ENV`) для различения TEST/PROD.

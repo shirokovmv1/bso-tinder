@@ -32,20 +32,30 @@ function getMatchInfo(score: number, genderA?: string, genderB?: string) {
 }
 
 export default function MatchPage() {
+  const appEnv = import.meta.env.VITE_APP_ENV ?? 'prod'
   const { matchCandidates, matchResult, setMatchCandidate, setMatchResult, clearMatch } = useAppStore()
   const [employees, setEmployees] = useState<ApiUser[]>([])
   const [pickerSlot, setPickerSlot] = useState<0 | 1 | null>(null)
   const [loading, setLoading] = useState(false)
+  const [loadError, setLoadError] = useState('')
+  const [matchError, setMatchError] = useState('')
 
   const [a, b] = matchCandidates
 
-  useEffect(() => { api.getUsers().then(setEmployees) }, [])
+  useEffect(() => {
+    setLoadError('')
+    api.getUsers()
+      .then(setEmployees)
+      .catch((err) => setLoadError(err instanceof Error ? err.message : 'Не удалось загрузить сотрудников'))
+  }, [])
 
   useEffect(() => {
     if (a && b && !matchResult) {
       setLoading(true)
+      setMatchError('')
       api.computeMatch(a.id, b.id)
         .then(setMatchResult)
+        .catch((err) => setMatchError(err instanceof Error ? err.message : 'Не удалось посчитать совместимость'))
         .finally(() => setLoading(false))
     }
   }, [a, b, matchResult, setMatchResult])
@@ -56,9 +66,26 @@ export default function MatchPage() {
         <h1 className="text-[34px] font-black leading-[1.05] tracking-tight mb-2 fade-up">
           {matchResult ? <>Вы — <span className="text-orange-500">команда</span></> : 'Найти совпадение'}
         </h1>
+        <div className={`inline-flex mb-3 px-2 py-1 rounded-full text-[9px] font-black uppercase tracking-[0.08em] border ${
+          appEnv === 'test'
+            ? 'text-yellow-300 border-yellow-300/50 bg-yellow-500/10'
+            : 'text-emerald-300 border-emerald-300/50 bg-emerald-500/10'
+        }`}>{appEnv}</div>
         <p className="text-white/55 text-[15px] font-medium mb-8 fade-up" style={{ animationDelay: '60ms' }}>
           {matchResult ? 'Посмотрите, что вас объединяет' : 'Выберите двух коллег для сравнения'}
         </p>
+
+        {!!loadError && (
+          <div className="glass-1 rounded-2xl p-4 border border-red-400/30 mb-5">
+            <p className="text-[13px] font-bold text-red-300 mb-3">{loadError}</p>
+            <button
+              onClick={() => api.getUsers().then(setEmployees).catch(() => {})}
+              className="px-3 py-2 rounded-full text-[12px] font-bold bg-orange-500/20 border border-orange-500/40 text-orange-300"
+            >
+              Попробовать снова
+            </button>
+          </div>
+        )}
 
         {/* Слоты */}
         <div className="relative flex items-center justify-between gap-3 mb-8 fade-up" style={{ animationDelay: '120ms' }}>
@@ -81,6 +108,11 @@ export default function MatchPage() {
         {loading && (
           <div className="flex items-center justify-center py-12">
             <div className="w-8 h-8 border-2 border-orange-500/30 border-t-orange-500 rounded-full animate-spin" />
+          </div>
+        )}
+        {!!matchError && (
+          <div className="glass-1 rounded-2xl p-4 border border-red-400/30 mb-5">
+            <p className="text-[13px] font-bold text-red-300">{matchError}</p>
           </div>
         )}
 

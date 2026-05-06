@@ -74,6 +74,16 @@ function SessionBootstrap() {
   return null
 }
 
+function UnauthorizedRedirectListener() {
+  const navigate = useNavigate()
+  useEffect(() => {
+    const onUnauthorized = () => navigate('/login?session_expired=1', { replace: true })
+    window.addEventListener('app:unauthorized', onUnauthorized)
+    return () => window.removeEventListener('app:unauthorized', onUnauthorized)
+  }, [navigate])
+  return null
+}
+
 // ── AuthGuard ────────────────────────────────────────────────────────────────
 function AuthGuard({ children }: { children: React.ReactNode }) {
   const { token, currentUser } = useAppStore()
@@ -115,6 +125,7 @@ export default function App() {
   return (
     <BrowserRouter>
       <MagicLinkHandler>
+        <UnauthorizedRedirectListener />
         <SessionBootstrap />
         <Routes>
           <Route path="/"           element={<RootRedirect />} />

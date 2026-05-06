@@ -23,6 +23,9 @@ export default function LoginPage() {
     if (searchParams.get('magic_error')) {
       setError('Ссылка для входа недействительна, устарела или уже была использована')
     }
+    if (searchParams.get('session_expired')) {
+      setError('Сессия истекла. Войдите снова.')
+    }
   }, [searchParams])
 
   async function handleLogin(e: React.FormEvent) {

@@ -34,7 +34,36 @@ export default defineConfig({
         ]
       },
       workbox: {
-        globPatterns: ['**/*.{js,css,html,ico,png,svg,woff2}']
+        globPatterns: ['**/*.{js,css,html,ico,png,svg,woff2}'],
+        runtimeCaching: [
+          {
+            urlPattern: /\/api\/users$/,
+            handler: 'NetworkFirst',
+            options: {
+              cacheName: 'api-users-cache',
+              networkTimeoutSeconds: 3,
+              cacheableResponse: { statuses: [0, 200] },
+            },
+          },
+          {
+            urlPattern: /\/api\/users\/me$/,
+            handler: 'NetworkFirst',
+            options: {
+              cacheName: 'api-me-cache',
+              networkTimeoutSeconds: 3,
+              cacheableResponse: { statuses: [0, 200] },
+            },
+          },
+          {
+            urlPattern: /\/api\/feed$/,
+            handler: 'NetworkFirst',
+            options: {
+              cacheName: 'api-feed-cache',
+              networkTimeoutSeconds: 3,
+              cacheableResponse: { statuses: [0, 200] },
+            },
+          },
+        ],
       }
     })
   ],
