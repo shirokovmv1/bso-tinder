@@ -1,8 +1,8 @@
 import { useEffect, useState, useCallback } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { api, type ApiUser, type ApiDepartment, type ApiHobby, type ApiReactionType, type ApiLlmSettings } from '@/api/client'
+import { api, type ApiUser, type ApiDepartment, type ApiHobby, type ApiReactionType, type ApiLlmSettings, type ApiReactionStats, type ApiReactionStatEmoji } from '@/api/client'
 
-type Tab = 'users' | 'logs' | 'smtp' | 'refs' | 'ai'
+type Tab = 'users' | 'logs' | 'smtp' | 'refs' | 'ai' | 'analytics'
 type RefsSection = 'departments' | 'hobbies' | 'reactions'
 
 // ── иконки ──────────────────────────────────────────────────────────────────
@@ -937,13 +937,134 @@ function AiTab() {
   )
 }
 
+// ── вкладка "Аналитика" ──────────────────────────────────────────────────────
+const AVATAR_TONES = [
+  'linear-gradient(135deg,#FF8A33,#FF6B00)',
+  'linear-gradient(135deg,#5b6cff,#3a4be0)',
+  'linear-gradient(135deg,#34D399,#0EA371)',
+  'linear-gradient(135deg,#B388FF,#7C4DFF)',
+  'linear-gradient(135deg,#FF8FAB,#E94B7C)',
+]
+const toneFor = (id: string) => AVATAR_TONES[id.charCodeAt(0) % AVATAR_TONES.length]
+
+const MEDALS = ['🥇', '🥈', '🥉']
+
+function AnalyticsTab() {
+  const [stats, setStats] = useState<ApiReactionStats | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [toast, setToast] = useState<string | null>(null)
+
+  useEffect(() => {
+    api.adminGetReactionStats()
+      .then(setStats)
+      .catch(() => setToast('Не удалось загрузить статистику'))
+      .finally(() => setLoading(false))
+  }, [])
+
+  if (loading) return (
+    <div className="flex justify-center py-12">
+      <div className="w-7 h-7 border-2 border-orange-500/30 border-t-orange-500 rounded-full animate-spin" />
+    </div>
+  )
+
+  if (!stats || (!stats.topTotal.length && !stats.topByEmoji.length)) return (
+    <div className="text-center py-12">
+      <div className="text-4xl mb-3">📊</div>
+      <p className="text-sm font-bold" style={{ color: 'var(--fg-3)' }}>Реакций ещё нет</p>
+      <p className="text-xs mt-1" style={{ color: 'var(--fg-3)', opacity: 0.6 }}>Попросите участников поставить реакции на профили</p>
+    </div>
+  )
+
+  return (
+    <div className="space-y-6">
+      <AnimatePresence>
+        {toast && <Toast message={toast} onDone={() => setToast(null)} />}
+      </AnimatePresence>
+
+      {/* Топ-3 по всем реакциям */}
+      {stats.topTotal.length > 0 && (
+        <section>
+          <h3 className="text-[11px] font-black uppercase tracking-[0.12em] mb-3" style={{ color: 'var(--fg-3)' }}>
+            ⭐ Звёзды вечера — топ по всем реакциям
+          </h3>
+          <div className="space-y-2">
+            {stats.topTotal.slice(0, 3).map((u, i) => (
+              <motion.div
+                key={u.user_id}
+                initial={{ opacity: 0, x: -12 }}
+                animate={{ opacity: 1, x: 0 }}
+                transition={{ delay: i * 0.07 }}
+                className="flex items-center gap-3 p-3 rounded-xl"
+                style={{ background: i === 0 ? 'rgba(255,107,0,0.12)' : 'rgba(255,255,255,0.04)', border: i === 0 ? '1px solid rgba(255,107,0,0.25)' : '1px solid rgba(255,255,255,0.07)' }}
+              >
+                <span className="text-xl w-7 text-center shrink-0">{MEDALS[i] ?? `#${i + 1}`}</span>
+                <div className="w-10 h-10 rounded-full grid place-items-center text-white font-black text-[16px] shrink-0 border border-white/15"
+                  style={{ background: toneFor(u.user_id) }}>
+                  {(u.name ?? '?')[0]}
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className="font-bold text-[14px] truncate" style={{ color: 'var(--fg-1)' }}>{u.name ?? 'Без имени'}</div>
+                </div>
+                <div className="shrink-0 text-right">
+                  <div className="text-[18px] font-black" style={{ color: i === 0 ? '#FF6B00' : 'var(--fg-1)' }}>{u.total}</div>
+                  <div className="text-[9px] font-bold uppercase tracking-wider" style={{ color: 'var(--fg-3)' }}>реакций</div>
+                </div>
+              </motion.div>
+            ))}
+          </div>
+        </section>
+      )}
+
+      {/* Лидеры по каждому эмодзи */}
+      {stats.topByEmoji.length > 0 && (
+        <section>
+          <h3 className="text-[11px] font-black uppercase tracking-[0.12em] mb-3" style={{ color: 'var(--fg-3)' }}>
+            🏅 Номинации
+          </h3>
+          <div className="space-y-3">
+            {stats.topByEmoji.map((cat: ApiReactionStatEmoji) => (
+              <div key={cat.reaction_type_id}
+                className="rounded-xl p-3"
+                style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.07)' }}
+              >
+                <div className="flex items-center gap-2 mb-2">
+                  <span className="text-lg">{cat.emoji}</span>
+                  <span className="text-[12px] font-black" style={{ color: 'var(--fg-2)' }}>Больше всего «{cat.label}»</span>
+                </div>
+                <div className="flex flex-col gap-1.5">
+                  {cat.leaders.map((leader, j) => (
+                    <div key={leader.user_id} className="flex items-center gap-2">
+                      <span className="text-sm w-5 text-center">{MEDALS[j] ?? `${j + 1}.`}</span>
+                      <div className="w-7 h-7 rounded-full grid place-items-center text-white font-black text-[12px] shrink-0"
+                        style={{ background: toneFor(leader.user_id) }}>
+                        {(leader.name ?? '?')[0]}
+                      </div>
+                      <span className="flex-1 text-[13px] font-semibold truncate" style={{ color: 'var(--fg-1)' }}>
+                        {leader.name ?? 'Без имени'}
+                      </span>
+                      <span className="text-[13px] font-black" style={{ color: 'var(--brand-orange)' }}>
+                        {leader.count} {cat.emoji}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
+    </div>
+  )
+}
+
 // ── главный компонент ────────────────────────────────────────────────────────
 const TABS: { id: Tab; label: string }[] = [
-  { id: 'users', label: 'Пользователи' },
-  { id: 'logs',  label: 'Логи' },
-  { id: 'smtp',  label: 'SMTP' },
-  { id: 'refs',  label: 'Справочники' },
-  { id: 'ai',    label: 'AI' },
+  { id: 'users',     label: 'Пользователи' },
+  { id: 'logs',      label: 'Логи' },
+  { id: 'smtp',      label: 'SMTP' },
+  { id: 'refs',      label: 'Справочники' },
+  { id: 'ai',        label: 'AI' },
+  { id: 'analytics', label: 'Аналитика' },
 ]
 
 export default function AdminPage() {
@@ -959,10 +1080,10 @@ export default function AdminPage() {
         </motion.div>
 
         <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.05 }}
-          className="glass-1 p-1 rounded-2xl flex gap-1">
+          className="glass-1 p-1 rounded-2xl flex gap-1 overflow-x-auto scrollbar-none">
           {TABS.map(tab => (
             <button key={tab.id} onClick={() => setActiveTab(tab.id)}
-              className="flex-1 py-2 rounded-xl text-xs font-medium transition-all"
+              className="shrink-0 py-2 px-2.5 rounded-xl text-xs font-medium transition-all"
               style={{
                 background: activeTab === tab.id ? 'rgba(255,107,0,0.22)' : 'transparent',
                 color: activeTab === tab.id ? 'var(--brand-orange)' : 'var(--fg-3)',
@@ -976,11 +1097,12 @@ export default function AdminPage() {
         <motion.div key={activeTab} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.18 }}
           className="glass-1 rounded-2xl p-5">
           <AnimatePresence mode="wait">
-            {activeTab === 'users' && <UsersTab />}
-            {activeTab === 'logs'  && <LogsTab />}
-            {activeTab === 'smtp'  && <SmtpTab />}
-            {activeTab === 'refs'  && <RefsTab />}
-            {activeTab === 'ai'    && <AiTab />}
+            {activeTab === 'users'     && <UsersTab />}
+            {activeTab === 'logs'      && <LogsTab />}
+            {activeTab === 'smtp'      && <SmtpTab />}
+            {activeTab === 'refs'      && <RefsTab />}
+            {activeTab === 'ai'        && <AiTab />}
+            {activeTab === 'analytics' && <AnalyticsTab />}
           </AnimatePresence>
         </motion.div>
 

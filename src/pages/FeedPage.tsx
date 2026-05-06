@@ -205,7 +205,8 @@ export default function FeedPage() {
 }
 
 function PersonCard({ user, delay, onClick }: { user: ApiUser; delay: number; onClick: () => void }) {
-  const hobbies = (user.hobbies ?? []).filter(h => h.parent_id !== null).slice(0, 4)
+  const hobbies = (user.hobbies ?? []).filter(h => h.parent_id !== null).slice(0, 3)
+  const reactions = (user.reaction_counts ?? []).slice(0, 4)
   return (
     <button
       onClick={onClick}
@@ -228,6 +229,19 @@ function PersonCard({ user, delay, onClick }: { user: ApiUser; delay: number; on
             </span>
           ))}
         </div>
+        {reactions.length > 0 && (
+          <div className="flex gap-1.5 mt-1.5">
+            {reactions.map(r => (
+              <span
+                key={r.reaction_type_id}
+                className="text-[11px] font-bold px-2 py-0.5 rounded-full"
+                style={{ background: 'rgba(255,107,0,0.12)', border: '1px solid rgba(255,107,0,0.22)', color: 'rgba(255,200,120,0.9)' }}
+              >
+                {r.emoji} {r.count}
+              </span>
+            ))}
+          </div>
+        )}
       </div>
       <span className="text-white/30 text-2xl font-black shrink-0">›</span>
     </button>

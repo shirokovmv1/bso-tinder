@@ -490,4 +490,45 @@ router.get('/settings/llm/models', verifyAdmin, async (req, res) => {
   }
 })
 
+// ── Аналитика реакций ────────────────────────────────────────────────────────
+
+// GET /api/admin/stats/reactions — «Звезды вечера»
+router.get('/stats/reactions', verifyAdmin, (req, res) => {
+  // Топ-10 по суммарным реакциям
+  const topTotal = db.prepare(`
+    SELECT r.to_user_id as user_id, u.name, u.avatar_url, COUNT(*) as total
+    FROM reactions r
+    JOIN users u ON u.id = r.to_user_id
+    GROUP BY r.to_user_id
+    ORDER BY total DESC
+    LIMIT 10
+  `).all()
+
+  // Лидеры по каждому типу реакции
+  const emojiTypes = db.prepare(
+    'SELECT id, emoji, label FROM reaction_types WHERE is_active = 1 ORDER BY sort_order, label'
+  ).all()
+
+  const topByEmoji = emojiTypes.map(rt => {
+    const leaders = db.prepare(`
+      SELECT r.to_user_id as user_id, u.name, u.avatar_url, COUNT(*) as count
+      FROM reactions r
+      JOIN users u ON u.id = r.to_user_id
+      WHERE r.emoji_type = ?
+      GROUP BY r.to_user_id
+      ORDER BY count DESC
+      LIMIT 3
+    `).all(rt.id)
+
+    return {
+      reaction_type_id: rt.id,
+      emoji: rt.emoji,
+      label: rt.label,
+      leaders,
+    }
+  }).filter(e => e.leaders.length > 0)
+
+  res.json({ topTotal, topByEmoji })
+})
+
 module.exports = router

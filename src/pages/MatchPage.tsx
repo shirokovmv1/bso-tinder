@@ -13,6 +13,24 @@ const TONES = [
 ]
 const toneFor = (id: string) => TONES[id.charCodeAt(0) % TONES.length]
 
+// Градация по score + гендерные статусы для 90–100%
+function getMatchInfo(score: number, genderA?: string, genderB?: string) {
+  if (score >= 90) {
+    let special: string
+    const g1 = genderA ?? ''
+    const g2 = genderB ?? ''
+    if (g1 === 'm' && g2 === 'm')       special = 'Братья по духу!'
+    else if (g1 === 'f' && g2 === 'f')  special = 'Сёстры!'
+    else if ((g1 === 'm' && g2 === 'f') || (g1 === 'f' && g2 === 'm'))
+                                         special = 'Идеальная пара!'
+    else                                 special = '100% Совпадение!'
+    return { label: special, sublabel: 'Высший уровень совместимости', color: '#FF3D00' }
+  }
+  if (score >= 70) return { label: 'Почти идеал!',           sublabel: 'Очень высокая совместимость', color: '#FF6B00' }
+  if (score >= 50) return { label: 'Отличная совместимость', sublabel: 'Много общего',                color: '#FF8C00' }
+  return              { label: 'Хорошее начало',             sublabel: 'Есть о чём поговорить',       color: '#F0A500' }
+}
+
 export default function MatchPage() {
   const { matchCandidates, matchResult, setMatchCandidate, setMatchResult, clearMatch } = useAppStore()
   const [employees, setEmployees] = useState<ApiUser[]>([])
@@ -49,7 +67,7 @@ export default function MatchPage() {
           {matchResult ? (
             <motion.div initial={{ scale: 0 }} animate={{ scale: 1 }} transition={{ type: 'spring', delay: 0.3 }}
               className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 z-10">
-              <CompatRing score={matchResult.score} />
+              <CompatRing score={matchResult.score} genderA={a?.gender} genderB={b?.gender} />
             </motion.div>
           ) : (
             <div className="w-10 h-10 rounded-full glass-1 grid place-items-center shrink-0">
@@ -68,6 +86,24 @@ export default function MatchPage() {
 
         {matchResult && (
           <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.5 }} className="space-y-5">
+            {/* Статус совместимости */}
+            {(() => {
+              const info = getMatchInfo(matchResult.score, a?.gender, b?.gender)
+              return (
+                <motion.div
+                  initial={{ opacity: 0, scale: 0.9 }}
+                  animate={{ opacity: 1, scale: 1 }}
+                  transition={{ delay: 0.7, type: 'spring', damping: 16 }}
+                  className="text-center"
+                >
+                  <div className="text-[26px] font-black tracking-tight" style={{ color: info.color }}>
+                    {info.label}
+                  </div>
+                  <div className="text-[13px] font-semibold text-white/50 mt-0.5">{info.sublabel}</div>
+                </motion.div>
+              )
+            })()}
+
             {/* Имена */}
             <div className="flex justify-between px-2">
               <div className="text-center w-[120px]">
@@ -184,15 +220,17 @@ function SlotCard({ user, onPick, onClear }: { user: ApiUser | null; onPick: () 
   )
 }
 
-function CompatRing({ score }: { score: number }) {
+function CompatRing({ score, genderA, genderB }: { score: number; genderA?: string; genderB?: string }) {
   const R = 54; const C = 2 * Math.PI * R
   const ref = useRef<SVGCircleElement>(null)
+  const { color } = getMatchInfo(score, genderA, genderB)
+
   useEffect(() => {
     if (!ref.current) return
     const target = C * (1 - score / 100)
     animate(C, target, { duration: 1.4, ease: 'easeOut', onUpdate: v => { if (ref.current) ref.current.style.strokeDashoffset = String(v) } })
   }, [score, C])
-  const color = score >= 70 ? '#FF6B00' : score >= 40 ? '#F39C12' : '#6A6A6A'
+
   return (
     <div className="relative w-[140px] h-[140px]">
       <svg width="140" height="140" viewBox="0 0 140 140" style={{ transform: 'rotate(-90deg)' }}>
@@ -202,7 +240,7 @@ function CompatRing({ score }: { score: number }) {
           strokeLinecap="round" strokeDasharray={C} strokeDashoffset={C} />
       </svg>
       <div className="absolute inset-0 flex flex-col items-center justify-center">
-        <span className="text-[34px] font-black tracking-tight leading-none">{score}%</span>
+        <span className="text-[34px] font-black tracking-tight leading-none" style={{ color }}>{score}%</span>
         <span className="text-[9px] font-black uppercase tracking-[0.12em] text-white/55 mt-0.5">совпадение</span>
       </div>
     </div>

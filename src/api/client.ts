@@ -111,6 +111,14 @@ export const api = {
     request<{ action: 'added' | 'removed'; id?: string }>('/reactions', {
       method: 'POST', body: JSON.stringify({ to_user_id, reaction_type_id }),
     }),
+  // Альтернативный маршрут POST /api/users/:id/react
+  reactToUser: (userId: string, emojiType: string) =>
+    request<{ action: 'added' | 'removed'; id?: string }>(`/users/${userId}/react`, {
+      method: 'POST', body: JSON.stringify({ emoji_type: emojiType }),
+    }),
+
+  // ── Admin: аналитика ──────────────────────────────────────────────────────
+  adminGetReactionStats: () => request<ApiReactionStats>('/admin/stats/reactions'),
 }
 
 // ── Типы API-ответов ─────────────────────────────────────────────────────────
@@ -139,6 +147,13 @@ export interface ApiReactionType {
   is_active: number
 }
 
+export interface ApiReactionCount {
+  reaction_type_id: string
+  emoji: string
+  label: string
+  count: number
+}
+
 export interface ApiUser {
   id: string
   email: string
@@ -158,6 +173,7 @@ export interface ApiUser {
   badge_title?: string
   badge_emoji?: string
   badge_reason?: string
+  reaction_counts?: ApiReactionCount[]
 }
 
 export interface ApiLlmSettings {
@@ -174,4 +190,23 @@ export interface ApiMatchResult {
   sharedHobbies: ApiHobby[]
   uniqueA: ApiHobby[]
   uniqueB: ApiHobby[]
+}
+
+export interface ApiReactionStatUser {
+  user_id: string
+  name: string | null
+  avatar_url: string | null
+  total: number
+}
+
+export interface ApiReactionStatEmoji {
+  reaction_type_id: string
+  emoji: string
+  label: string
+  leaders: Array<{ user_id: string; name: string | null; avatar_url: string | null; count: number }>
+}
+
+export interface ApiReactionStats {
+  topTotal: ApiReactionStatUser[]
+  topByEmoji: ApiReactionStatEmoji[]
 }

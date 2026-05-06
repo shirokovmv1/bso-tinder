@@ -17,6 +17,32 @@ function getUserHobbies(userId) {
   `).all(userId)
 }
 
+// Агрегированные реакции для одного или нескольких пользователей
+function getReactionCounts(userIds) {
+  if (!userIds.length) return {}
+  const placeholders = userIds.map(() => '?').join(',')
+  const rows = db.prepare(`
+    SELECT r.to_user_id, rt.id as reaction_type_id, rt.emoji, rt.label, COUNT(*) as count
+    FROM reactions r
+    JOIN reaction_types rt ON rt.id = r.emoji_type
+    WHERE r.to_user_id IN (${placeholders})
+    GROUP BY r.to_user_id, r.emoji_type
+    ORDER BY count DESC
+  `).all(...userIds)
+
+  const map = {}
+  for (const row of rows) {
+    if (!map[row.to_user_id]) map[row.to_user_id] = []
+    map[row.to_user_id].push({
+      reaction_type_id: row.reaction_type_id,
+      emoji: row.emoji,
+      label: row.label,
+      count: row.count,
+    })
+  }
+  return map
+}
+
 // GET /api/users — список всех сотрудников (кроме забаненных)
 router.get('/', verifyJWT, (req, res) => {
   const users = db.prepare(`
@@ -28,9 +54,12 @@ router.get('/', verifyJWT, (req, res) => {
     ORDER BY name
   `).all()
 
+  const reactionMap = getReactionCounts(users.map(u => u.id))
+
   const result = users.map(u => ({
     ...u,
     hobbies: getUserHobbies(u.id),
+    reaction_counts: reactionMap[u.id] ?? [],
   }))
 
   res.json(result)
@@ -67,7 +96,42 @@ router.get('/:id', verifyJWT, (req, res) => {
   `).get(req.params.id)
 
   if (!user) return res.status(404).json({ error: 'Пользователь не найден' })
-  res.json({ ...user, hobbies: getUserHobbies(user.id) })
+  const reactionMap = getReactionCounts([user.id])
+  res.json({ ...user, hobbies: getUserHobbies(user.id), reaction_counts: reactionMap[user.id] ?? [] })
+})
+
+// POST /api/users/:id/react — поставить реакцию (альтернативный маршрут)
+router.post('/:id/react', verifyJWT, (req, res) => {
+  const toUserId = req.params.id
+  const { emoji_type } = req.body   // emoji_type = reaction_type_id (UUID)
+
+  if (!emoji_type) return res.status(400).json({ error: 'emoji_type обязателен' })
+  if (toUserId === req.user.id) return res.status(400).json({ error: 'Нельзя реагировать на себя' })
+
+  const target = db.prepare('SELECT id FROM users WHERE id = ? AND is_banned = 0').get(toUserId)
+  if (!target) return res.status(404).json({ error: 'Пользователь не найден' })
+
+  const rt = db.prepare('SELECT id FROM reaction_types WHERE id = ? AND is_active = 1').get(emoji_type)
+  if (!rt) return res.status(400).json({ error: 'Тип реакции не найден' })
+
+  // toggle: если уже есть — удаляем
+  const existing = db.prepare(
+    'SELECT id FROM reactions WHERE from_user_id = ? AND to_user_id = ? AND emoji_type = ?'
+  ).get(req.user.id, toUserId, emoji_type)
+
+  if (existing) {
+    db.prepare('DELETE FROM reactions WHERE id = ?').run(existing.id)
+    logger.info('Reaction removed', { from: req.user.id, to: toUserId, type: emoji_type })
+    return res.json({ action: 'removed' })
+  }
+
+  const { v4: uuidv4 } = require('uuid')
+  const id = uuidv4()
+  db.prepare('INSERT INTO reactions (id, from_user_id, to_user_id, emoji_type) VALUES (?, ?, ?, ?)')
+    .run(id, req.user.id, toUserId, emoji_type)
+
+  logger.info('Reaction added', { from: req.user.id, to: toUserId, type: emoji_type })
+  res.status(201).json({ action: 'added', id })
 })
 
 // PUT /api/users/:id — онбординг / обновление профиля
