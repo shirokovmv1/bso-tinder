@@ -150,6 +150,51 @@ router.post('/verify-otp', otpLimiter, (req, res) => {
   })
 })
 
+// POST /api/auth/dev-login — упрощённый вход только в TEST (admin/admin)
+router.post('/dev-login', (req, res) => {
+  if (process.env.NODE_ENV === 'production') {
+    return res.status(404).json({ error: 'Not found' })
+  }
+
+  const { login, password } = req.body
+  if (login !== 'admin' || password !== 'admin') {
+    logger.warn('Dev-login: wrong credentials', { login })
+    return res.status(401).json({ error: 'Неверный логин или пароль' })
+  }
+
+  // Находим или создаём тестового администратора
+  let user = db.prepare("SELECT * FROM users WHERE email = 'admin'").get()
+  if (!user) {
+    const id = uuidv4()
+    db.prepare(
+      "INSERT INTO users (id, email, name, is_admin, onboarding_done) VALUES (?, 'admin', 'Admin', 1, 1)"
+    ).run(id)
+    user = db.prepare('SELECT * FROM users WHERE id = ?').get(id)
+    logger.info('Dev-login: admin user created', { id })
+  }
+
+  const token = jwt.sign(
+    { userId: user.id, email: user.email, isAdmin: true },
+    JWT_SECRET,
+    { expiresIn: JWT_EXPIRES_IN }
+  )
+
+  logger.info('Dev-login success', { userId: user.id })
+  res.json({
+    token,
+    user: {
+      id: user.id,
+      email: user.email,
+      name: user.name,
+      department: user.department,
+      avatarUrl: user.avatar_url,
+      badgeId: user.badge_id,
+      onboardingDone: true,
+      isAdmin: true,
+    },
+  })
+})
+
 // POST /api/auth/magic-login — вход по одноразовой/бессрочной magic-ссылке
 router.post('/magic-login', (req, res) => {
   const { token } = req.body

@@ -24,6 +24,12 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
 }
 
 export const api = {
+  // Auth — TEST: упрощённый вход admin/admin
+  devLogin: (login: string, password: string) =>
+    request<{ token: string; user: ApiUser }>('/auth/dev-login', {
+      method: 'POST', body: JSON.stringify({ login, password }),
+    }),
+
   // Auth
   sendOtp:   (email: string) =>
     request<{ success: boolean; message: string }>('/auth/send-otp', {

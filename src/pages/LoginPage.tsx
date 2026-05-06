@@ -3,15 +3,11 @@ import { useNavigate, useSearchParams } from 'react-router-dom'
 import { api } from '@/api/client'
 import { useAppStore } from '@/store/useAppStore'
 
-type Step = 'email' | 'code'
-
 export default function LoginPage() {
-  const [step, setStep] = useState<Step>('email')
-  const [email, setEmail] = useState('')
-  const [code, setCode] = useState('')
-  const [loading, setLoading] = useState(false)
-  const [error, setError] = useState('')
-  const [hint, setHint] = useState('')
+  const [login, setLogin]       = useState('')
+  const [password, setPassword] = useState('')
+  const [loading, setLoading]   = useState(false)
+  const [error, setError]       = useState('')
 
   const { token, setToken } = useAppStore()
   const navigate = useNavigate()
@@ -29,25 +25,12 @@ export default function LoginPage() {
     }
   }, [searchParams])
 
-  async function handleSendOtp(e: React.FormEvent) {
+  async function handleLogin(e: React.FormEvent) {
     e.preventDefault()
-    if (!email.trim()) return
+    if (!login.trim() || !password.trim()) return
     setLoading(true); setError('')
     try {
-      const res = await api.sendOtp(email.trim())
-      setHint(res.message)
-      setStep('code')
-    } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : 'Ошибка')
-    } finally { setLoading(false) }
-  }
-
-  async function handleVerify(e: React.FormEvent) {
-    e.preventDefault()
-    if (code.length < 4) return
-    setLoading(true); setError('')
-    try {
-      const res = await api.verifyOtp(email.trim(), code.trim())
+      const res = await api.devLogin(login.trim(), password.trim())
       setToken(res.token, res.user)
       navigate(res.user.onboarding_done ? '/feed' : '/onboarding', { replace: true })
     } catch (err: unknown) {
@@ -70,83 +53,41 @@ export default function LoginPage() {
           </div>
         </div>
 
-        {step === 'email' ? (
-          <form onSubmit={handleSendOtp} className="space-y-4 fade-up" style={{ animationDelay: '60ms' }}>
-            <div>
-              <h1 className="text-[32px] font-black leading-[1.05] tracking-tight">Вход</h1>
-              <p className="text-white/60 mt-2 text-[15px] font-medium">
-                Введите корпоративный email — пришлём код подтверждения.
-              </p>
-            </div>
+        <form onSubmit={handleLogin} className="space-y-4 fade-up" style={{ animationDelay: '60ms' }}>
+          <div>
+            <h1 className="text-[32px] font-black leading-[1.05] tracking-tight">Вход</h1>
+            <p className="text-white/60 mt-2 text-[15px] font-medium">
+              Тестовый режим — используйте выданные учётные данные.
+            </p>
+          </div>
 
-            <FloatField
-              label="Корпоративный email"
-              value={email}
-              onChange={setEmail}
-              type="email"
-              placeholder="имя@bso-cc.ru"
-              autoComplete="email"
-            />
+          <FloatField
+            label="Логин"
+            value={login}
+            onChange={setLogin}
+            placeholder="admin"
+            autoComplete="username"
+          />
 
-            {error && <p className="text-[13px] font-bold text-danger">{error}</p>}
+          <FloatField
+            label="Пароль"
+            value={password}
+            onChange={setPassword}
+            type="password"
+            placeholder="••••••"
+            autoComplete="current-password"
+          />
 
-            <button
-              type="submit"
-              disabled={loading || !email.includes('@')}
-              className="cta-orange w-full py-4 text-[16px] font-extrabold disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              {loading ? 'Отправляем...' : 'Получить код →'}
-            </button>
-          </form>
-        ) : (
-          <form onSubmit={handleVerify} className="space-y-4 fade-up">
-            <div>
-              <button
-                type="button"
-                onClick={() => { setStep('email'); setCode(''); setError('') }}
-                className="text-[13px] font-bold text-white/50 mb-4 flex items-center gap-1 press-shrink ease-spring transition"
-              >
-                ‹ Назад
-              </button>
-              <h1 className="text-[32px] font-black leading-[1.05] tracking-tight">Код из письма</h1>
-              <p className="text-white/60 mt-2 text-[15px] font-medium">
-                Отправили код на <span className="text-white font-bold">{email}</span>
-              </p>
-              {hint && <p className="text-[12px] text-orange-400 font-bold mt-1">{hint}</p>}
-            </div>
+          {error && <p className="text-[13px] font-bold text-red-400">{error}</p>}
 
-            <div className="rounded-2xl px-4 py-3 glass-1 border border-transparent focus-within:border-orange-500 transition-colors">
-              <div className="text-[10px] font-black uppercase tracking-[0.08em] text-white/50 mb-1">4-значный код</div>
-              <input
-                value={code}
-                onChange={e => setCode(e.target.value.replace(/\D/g, '').slice(0, 4))}
-                inputMode="numeric"
-                maxLength={4}
-                autoFocus
-                placeholder="0000"
-                className="w-full bg-transparent outline-none text-white text-[28px] font-black tracking-[0.3em] placeholder:text-white/20"
-              />
-            </div>
-
-            {error && <p className="text-[13px] font-bold text-danger">{error}</p>}
-
-            <button
-              type="submit"
-              disabled={loading || code.length < 4}
-              className="cta-orange w-full py-4 text-[16px] font-extrabold disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              {loading ? 'Проверяем...' : 'Войти →'}
-            </button>
-
-            <button
-              type="button"
-              onClick={() => { setCode(''); setError(''); handleSendOtp(new Event('') as unknown as React.FormEvent) }}
-              className="w-full text-[13px] font-bold text-white/40 pt-1"
-            >
-              Отправить новый код
-            </button>
-          </form>
-        )}
+          <button
+            type="submit"
+            disabled={loading || !login.trim() || !password.trim()}
+            className="cta-orange w-full py-4 text-[16px] font-extrabold disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            {loading ? 'Входим...' : 'Войти →'}
+          </button>
+        </form>
       </div>
     </div>
   )
@@ -168,6 +109,7 @@ function FloatField({ label, value, onChange, type = 'text', placeholder, autoCo
         onBlur={() => setFocus(false)}
         placeholder={placeholder}
         autoComplete={autoComplete}
+        autoFocus={!value && type !== 'password'}
         className="w-full bg-transparent outline-none text-white text-[16px] font-bold placeholder:text-white/30"
       />
     </div>
