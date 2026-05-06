@@ -83,3 +83,52 @@ npm run dev
 | `/feed` | Лента сотрудников |
 | `/match` | Экран мэтчинга |
 | `/profile` | Профиль пользователя |
+
+## Security & Operations
+
+### Rate limiting
+
+| Лимитер | Роуты | Окно | Максимум |
+|---|---|---|---|
+| Global | все `/api/*` | 60 сек | 120 req/IP |
+| Auth strict | `/api/auth/dev-login`, `/api/auth/magic-login` | 15 мин | 10 req/IP |
+| Admin | все `/api/admin/*` | 60 сек | 60 req/IP |
+| Reactions | `POST /api/reactions` | 60 сек | 30 req/IP |
+
+При превышении лимита возвращается `HTTP 429 Too Many Requests`.
+
+### Проверка rate-limit
+
+```bash
+# Проверить, что на 11-й запрос приходит 429
+for i in $(seq 1 11); do
+  curl -s -o /dev/null -w "%{http_code}\n" \
+    -X POST http://158.255.5.199/api/auth/magic-login \
+    -H "Content-Type: application/json" \
+    -d '{"token":"test"}'
+done
+# Ожидаемый вывод: 400 (×10), потом 429
+```
+
+### Проверка security headers
+
+```bash
+curl -sI http://158.255.5.199/api/health | grep -iE "x-frame|x-content|referrer|permissions"
+```
+
+Ожидаемые заголовки:
+- `X-Frame-Options: DENY`
+- `X-Content-Type-Options: nosniff`
+- `Referrer-Policy: strict-origin-when-cross-origin`
+- `Permissions-Policy: geolocation=(), microphone=(), camera=()`
+
+В DevTools: Network → любой `/api/` запрос → вкладка Response Headers.
+
+### Healthcheck
+
+```bash
+curl http://158.255.5.199/api/health
+# {"status":"ok","db":"ok","env":"production"}
+```
+
+При недоступности БД вернёт `HTTP 503` с `{"status":"degraded","db":"error"}`.

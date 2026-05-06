@@ -16,6 +16,14 @@ const otpLimiter = rateLimit({
   legacyHeaders: false,
 })
 
+const authStrictLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 10,
+  message: { error: 'Слишком много попыток входа. Попробуйте через 15 минут.' },
+  standardHeaders: true,
+  legacyHeaders: false,
+})
+
 function getTransporter() {
   // Пытаемся взять актуальные настройки из БД (позволяет менять SMTP из админки)
   const rows = db.prepare("SELECT key, value FROM settings WHERE key LIKE 'smtp_%'").all()
@@ -151,7 +159,7 @@ router.post('/verify-otp', otpLimiter, (req, res) => {
 })
 
 // POST /api/auth/dev-login — упрощённый вход только в TEST (admin/admin)
-router.post('/dev-login', (req, res) => {
+router.post('/dev-login', authStrictLimiter, (req, res) => {
   if (!ALLOW_DEV_LOGIN) {
     return res.status(404).json({ error: 'Not found' })
   }
@@ -196,7 +204,7 @@ router.post('/dev-login', (req, res) => {
 })
 
 // POST /api/auth/magic-login — вход по одноразовой/бессрочной magic-ссылке
-router.post('/magic-login', (req, res) => {
+router.post('/magic-login', authStrictLimiter, (req, res) => {
   const { token } = req.body
   if (!token || typeof token !== 'string') {
     return res.status(400).json({ error: 'Токен обязателен' })

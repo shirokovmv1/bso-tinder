@@ -1,6 +1,8 @@
 require('dotenv').config()
 const express = require('express')
 const cors = require('cors')
+const helmet = require('helmet')
+const rateLimit = require('express-rate-limit')
 const { PORT, FRONTEND_ORIGIN, NODE_ENV, APP_ENV, JWT_SECRET } = require('./config')
 const logger = require('./logger')
 
@@ -14,10 +16,25 @@ require('./db')
 
 const app = express()
 
+// Доверять первому прокси (nginx) для корректного определения IP клиента
+app.set('trust proxy', 1)
+
+app.use(helmet({ contentSecurityPolicy: false }))
+
 app.use(cors({
   origin: NODE_ENV === 'production' ? FRONTEND_ORIGIN : true,
   credentials: true,
 }))
+
+// Глобальный rate-limit: 120 запросов в минуту с IP
+const globalLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 120,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Слишком много запросов. Попробуйте позже.' },
+})
+app.use('/api/', globalLimiter)
 
 app.use(express.json({ limit: '2mb' }))
 app.use(express.urlencoded({ extended: true }))
@@ -43,8 +60,16 @@ app.get('/api/departments', (_req, res) => {
   ).all())
 })
 
-// Health-check
-app.get('/api/health', (_req, res) => res.json({ status: 'ok', env: NODE_ENV }))
+// Health-check с проверкой БД
+app.get('/api/health', (_req, res) => {
+  try {
+    db.prepare('SELECT 1').get()
+    res.json({ status: 'ok', db: 'ok', env: NODE_ENV })
+  } catch (err) {
+    logger.error('Health check DB error', { error: err.message })
+    res.status(503).json({ status: 'degraded', db: 'error', error: err.message })
+  }
+})
 
 // 404
 app.use((_req, res) => res.status(404).json({ error: 'Роут не найден' }))

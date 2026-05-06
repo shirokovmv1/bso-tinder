@@ -1,9 +1,18 @@
 const express = require('express')
 const router = express.Router()
 const { v4: uuidv4 } = require('uuid')
+const rateLimit = require('express-rate-limit')
 const { verifyJWT } = require('../middleware/auth')
 const db = require('../db')
 const logger = require('../logger')
+
+const reactionsLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 30,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Слишком много реакций. Подождите немного.' },
+})
 
 // GET /api/reactions/types — публичный справочник типов реакций
 router.get('/types', verifyJWT, (_req, res) => {
@@ -36,7 +45,7 @@ router.get('/sent', verifyJWT, (req, res) => {
 })
 
 // POST /api/reactions — отправить реакцию
-router.post('/', verifyJWT, (req, res) => {
+router.post('/', verifyJWT, reactionsLimiter, (req, res) => {
   const { to_user_id, reaction_type_id } = req.body
   if (!to_user_id || !reaction_type_id) {
     return res.status(400).json({ error: 'to_user_id и reaction_type_id обязательны' })

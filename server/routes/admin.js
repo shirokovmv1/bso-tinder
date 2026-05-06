@@ -3,9 +3,19 @@ const router = express.Router()
 const fs = require('fs')
 const path = require('path')
 const { v4: uuidv4 } = require('uuid')
+const rateLimit = require('express-rate-limit')
 const { verifyAdmin } = require('../middleware/adminAuth')
 const db = require('../db')
 const logger = require('../logger')
+
+const adminLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 60,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Слишком много запросов к admin API.' },
+})
+router.use(adminLimiter)
 
 // ── Пользователи ─────────────────────────────────────────────────────────────
 
