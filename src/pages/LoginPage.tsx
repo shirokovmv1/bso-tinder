@@ -3,6 +3,8 @@ import { useNavigate, useSearchParams } from 'react-router-dom'
 import { api } from '@/api/client'
 import { useAppStore } from '@/store/useAppStore'
 
+const appEnv = import.meta.env.VITE_APP_ENV ?? 'prod'
+
 export default function LoginPage() {
   const [login, setLogin]       = useState('')
   const [password, setPassword] = useState('')
@@ -13,15 +15,13 @@ export default function LoginPage() {
   const navigate = useNavigate()
   const [searchParams] = useSearchParams()
 
-  // Уже авторизован — сразу на /feed
   useEffect(() => {
     if (token) navigate('/feed', { replace: true })
   }, [token, navigate])
 
-  // Невалидный magic link
   useEffect(() => {
     if (searchParams.get('magic_error')) {
-      setError('Ссылка для входа недействительна или устарела')
+      setError('Ссылка для входа недействительна, устарела или уже была использована')
     }
   }, [searchParams])
 
@@ -53,41 +53,61 @@ export default function LoginPage() {
           </div>
         </div>
 
-        <form onSubmit={handleLogin} className="space-y-4 fade-up" style={{ animationDelay: '60ms' }}>
-          <div>
-            <h1 className="text-[32px] font-black leading-[1.05] tracking-tight">Вход</h1>
-            <p className="text-white/60 mt-2 text-[15px] font-medium">
-              Тестовый режим — используйте выданные учётные данные.
-            </p>
+        {appEnv === 'test' ? (
+          <form onSubmit={handleLogin} className="space-y-4 fade-up" style={{ animationDelay: '60ms' }}>
+            <div>
+              <h1 className="text-[32px] font-black leading-[1.05] tracking-tight">Вход</h1>
+              <p className="text-white/60 mt-2 text-[15px] font-medium">
+                Тестовый режим — используйте выданные учётные данные.
+              </p>
+            </div>
+
+            <FloatField
+              label="Логин"
+              value={login}
+              onChange={setLogin}
+              placeholder="admin"
+              autoComplete="username"
+            />
+
+            <FloatField
+              label="Пароль"
+              value={password}
+              onChange={setPassword}
+              type="password"
+              placeholder="••••••"
+              autoComplete="current-password"
+            />
+
+            {error && <p className="text-[13px] font-bold text-red-400">{error}</p>}
+
+            <button
+              type="submit"
+              disabled={loading || !login.trim() || !password.trim()}
+              className="cta-orange w-full py-4 text-[16px] font-extrabold disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {loading ? 'Входим...' : 'Войти →'}
+            </button>
+          </form>
+        ) : (
+          <div className="space-y-6 fade-up" style={{ animationDelay: '60ms' }}>
+            <div>
+              <h1 className="text-[32px] font-black leading-[1.05] tracking-tight">Вход</h1>
+              <p className="text-white/60 mt-2 text-[15px] font-medium">
+                Войдите по персональной ссылке из письма или корпоративного чата.
+              </p>
+            </div>
+            <div className="rounded-2xl glass-1 px-5 py-5 space-y-2">
+              <p className="text-[14px] font-bold text-white/80">
+                Не получили ссылку?
+              </p>
+              <p className="text-[13px] text-white/55 leading-relaxed">
+                Обратитесь к администратору — он выдаст персональную ссылку для входа.
+              </p>
+            </div>
+            {error && <p className="text-[13px] font-bold text-red-400">{error}</p>}
           </div>
-
-          <FloatField
-            label="Логин"
-            value={login}
-            onChange={setLogin}
-            placeholder="admin"
-            autoComplete="username"
-          />
-
-          <FloatField
-            label="Пароль"
-            value={password}
-            onChange={setPassword}
-            type="password"
-            placeholder="••••••"
-            autoComplete="current-password"
-          />
-
-          {error && <p className="text-[13px] font-bold text-red-400">{error}</p>}
-
-          <button
-            type="submit"
-            disabled={loading || !login.trim() || !password.trim()}
-            className="cta-orange w-full py-4 text-[16px] font-extrabold disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            {loading ? 'Входим...' : 'Войти →'}
-          </button>
-        </form>
+        )}
       </div>
     </div>
   )

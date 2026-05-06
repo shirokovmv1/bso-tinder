@@ -76,17 +76,29 @@ router.put('/settings/smtp', verifyAdmin, (req, res) => {
   res.json({ success: true })
 })
 
+const MAGIC_LINK_TTL_MS = 30 * 24 * 60 * 60 * 1000 // 30 дней
+
 // ── Magic links / CSV ─────────────────────────────────────────────────────────
 
 router.get('/magic-link/:id', verifyAdmin, (req, res) => {
   const user = db.prepare('SELECT id, email FROM users WHERE id = ?').get(req.params.id)
   if (!user) return res.status(404).json({ error: 'Пользователь не найден' })
 
+  const now = Date.now()
   let link = db.prepare('SELECT * FROM magic_links WHERE user_id = ?').get(user.id)
-  if (!link) {
+
+  // Перевыпустить ссылку, если истекла или была использована/отозвана
+  const needReissue = !link || (link.expires_at && now > link.expires_at) || link.revoked || link.used_at
+  if (needReissue) {
+    if (link) {
+      db.prepare('DELETE FROM magic_links WHERE user_id = ?').run(user.id)
+    }
     const id = uuidv4()
     const magic_token = uuidv4()
-    db.prepare("INSERT INTO magic_links (id, user_id, magic_token) VALUES (?, ?, ?)").run(id, user.id, magic_token)
+    const expires_at = now + MAGIC_LINK_TTL_MS
+    db.prepare(
+      "INSERT INTO magic_links (id, user_id, magic_token, expires_at) VALUES (?, ?, ?, ?)"
+    ).run(id, user.id, magic_token, expires_at)
     link = db.prepare('SELECT * FROM magic_links WHERE id = ?').get(id)
     logger.info('Magic link created', { userId: user.id, email: user.email, by: req.user.id })
   }
@@ -96,15 +108,23 @@ router.get('/magic-link/:id', verifyAdmin, (req, res) => {
 })
 
 router.get('/users/csv', verifyAdmin, (req, res) => {
-  const users = db.prepare('SELECT id, email, name, department FROM users ORDER BY created_at DESC').all()
+  const users = db.prepare(
+    'SELECT id, email, name, department FROM users WHERE is_admin = 0 ORDER BY created_at DESC'
+  ).all()
   const origin = process.env.FRONTEND_ORIGIN || 'http://localhost:5173'
+  const now = Date.now()
 
   const getOrCreateToken = db.transaction((userId) => {
-    let link = db.prepare('SELECT magic_token FROM magic_links WHERE user_id = ?').get(userId)
-    if (!link) {
+    let link = db.prepare('SELECT * FROM magic_links WHERE user_id = ?').get(userId)
+    const needReissue = !link || (link.expires_at && now > link.expires_at) || link.revoked || link.used_at
+    if (needReissue) {
+      if (link) db.prepare('DELETE FROM magic_links WHERE user_id = ?').run(userId)
       const id = uuidv4()
       const magic_token = uuidv4()
-      db.prepare("INSERT INTO magic_links (id, user_id, magic_token) VALUES (?, ?, ?)").run(id, userId, magic_token)
+      const expires_at = now + MAGIC_LINK_TTL_MS
+      db.prepare(
+        "INSERT INTO magic_links (id, user_id, magic_token, expires_at) VALUES (?, ?, ?, ?)"
+      ).run(id, userId, magic_token, expires_at)
       link = { magic_token }
     }
     return link.magic_token

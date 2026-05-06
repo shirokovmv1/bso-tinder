@@ -6,7 +6,7 @@ const { v4: uuidv4 } = require('uuid')
 const rateLimit = require('express-rate-limit')
 const db = require('../db')
 const logger = require('../logger')
-const { isEmailAllowed, isAdminEmail, JWT_SECRET, JWT_EXPIRES_IN, SMTP } = require('../config')
+const { isEmailAllowed, isAdminEmail, JWT_SECRET, JWT_EXPIRES_IN, SMTP, ALLOW_DEV_LOGIN } = require('../config')
 
 const otpLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
@@ -152,7 +152,7 @@ router.post('/verify-otp', otpLimiter, (req, res) => {
 
 // POST /api/auth/dev-login — упрощённый вход только в TEST (admin/admin)
 router.post('/dev-login', (req, res) => {
-  if (process.env.NODE_ENV === 'production') {
+  if (!ALLOW_DEV_LOGIN) {
     return res.status(404).json({ error: 'Not found' })
   }
 
@@ -208,6 +208,16 @@ router.post('/magic-login', (req, res) => {
     return res.status(400).json({ error: 'Ссылка недействительна' })
   }
 
+  const now = Date.now()
+  if (link.expires_at && now > link.expires_at) {
+    logger.warn('Magic login: expired token', { userId: link.user_id })
+    return res.status(400).json({ error: 'Ссылка истекла. Запросите новую у администратора.' })
+  }
+  if (link.used_at || link.revoked) {
+    logger.warn('Magic login: already used token', { userId: link.user_id })
+    return res.status(400).json({ error: 'Ссылка уже была использована. Запросите новую у администратора.' })
+  }
+
   const user = db.prepare('SELECT * FROM users WHERE id = ?').get(link.user_id)
   if (!user) {
     return res.status(404).json({ error: 'Пользователь не найден' })
@@ -222,6 +232,8 @@ router.post('/magic-login', (req, res) => {
     JWT_SECRET,
     { expiresIn: JWT_EXPIRES_IN }
   )
+
+  db.prepare("UPDATE magic_links SET used_at = datetime('now'), revoked = 1 WHERE id = ?").run(link.id)
 
   logger.info('Magic link login success', { userId: user.id, email: user.email })
 

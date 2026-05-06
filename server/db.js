@@ -276,6 +276,18 @@ db.exec(`
   );
 `)
 
+// ── Миграция magic_links: добавить поля TTL и одноразовости ─────────────────
+
+const magicCols = db.pragma('table_info(magic_links)').map(c => c.name)
+const newMagicCols = [
+  ['expires_at', 'ALTER TABLE magic_links ADD COLUMN expires_at INTEGER'],
+  ['used_at',    'ALTER TABLE magic_links ADD COLUMN used_at TEXT'],
+  ['revoked',    'ALTER TABLE magic_links ADD COLUMN revoked INTEGER DEFAULT 0'],
+]
+for (const [col, sql] of newMagicCols) {
+  if (!magicCols.includes(col)) db.exec(sql)
+}
+
 logger.info('Database initialised', { path: DB_PATH })
 
 module.exports = db

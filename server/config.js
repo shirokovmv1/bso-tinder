@@ -25,7 +25,9 @@ function isAdminEmail(email) {
 module.exports = {
   PORT: parseInt(process.env.PORT || '3001', 10),
   NODE_ENV: process.env.NODE_ENV || 'development',
-  JWT_SECRET: process.env.JWT_SECRET || 'fallback-dev-secret',
+  APP_ENV: process.env.APP_ENV || 'prod',
+  ALLOW_DEV_LOGIN: process.env.ALLOW_DEV_LOGIN === 'true',
+  JWT_SECRET: process.env.JWT_SECRET || '',
   JWT_EXPIRES_IN: process.env.JWT_EXPIRES_IN || '24h',
   FRONTEND_ORIGIN: process.env.FRONTEND_ORIGIN || 'http://localhost:5173',
   SMTP: {

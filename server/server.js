@@ -1,8 +1,13 @@
 require('dotenv').config()
 const express = require('express')
 const cors = require('cors')
-const { PORT, FRONTEND_ORIGIN, NODE_ENV } = require('./config')
+const { PORT, FRONTEND_ORIGIN, NODE_ENV, APP_ENV, JWT_SECRET } = require('./config')
 const logger = require('./logger')
+
+if (APP_ENV === 'prod' && (!JWT_SECRET || JWT_SECRET.length < 32)) {
+  console.error('FATAL: JWT_SECRET must be set and >= 32 chars in prod. Server will not start.')
+  process.exit(1)
+}
 
 // Инициализация БД при импорте
 require('./db')

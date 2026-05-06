@@ -25,7 +25,48 @@ PWA-приложение для нетворкинга сотрудников н
 | UI-компоненты | ✅ Шаг 3 |
 | Страницы и роутинг | 🔜 Шаг 4 |
 
-## Запуск
+## Переменные окружения
+
+### Backend (`server/.env` / `docker-compose.yml`)
+
+| Переменная | Значения | Описание |
+|---|---|---|
+| `APP_ENV` | `prod` / `test` | Разделяет поведение: `prod` требует валидный JWT_SECRET, запрещает dev-login |
+| `ALLOW_DEV_LOGIN` | `true` / `false` | Разрешает эндпоинт `POST /api/auth/dev-login` (admin/admin). Только `test` |
+| `JWT_SECRET` | строка ≥ 32 символов | В `APP_ENV=prod` сервер **не запустится** без валидного секрета |
+| `NODE_ENV` | `production` | Управляет CORS и поведением Express |
+
+### Frontend (`.env` / `vite.config`)
+
+| Переменная | Значения | Описание |
+|---|---|---|
+| `VITE_APP_ENV` | `prod` / `test` | Определяет UI страницы логина |
+
+### Поведение страницы входа
+
+| `VITE_APP_ENV` | Страница `/login` |
+|---|---|
+| `prod` | Заглушка «Войдите по персональной ссылке» — форма скрыта |
+| `test` | Форма `admin / admin` для тестового доступа |
+
+### Magic-links
+
+- Срок жизни: **30 дней** с момента генерации (`expires_at`).
+- Одноразовые: после первого входа помечаются `used_at` и `revoked = 1`.
+- Истёкшие / использованные ссылки **автоматически перевыпускаются** при следующем запросе через `/api/admin/magic-link/:id` или CSV-экспорт.
+- CSV-экспорт (`/api/admin/users/csv`) **не включает** пользователей с `is_admin = 1`.
+
+### Сборка фронтенда по среде
+
+```bash
+# TEST
+VITE_APP_ENV=test npm run build -- --outDir dist-test
+
+# PROD
+VITE_APP_ENV=prod npm run build -- --outDir dist-prod
+```
+
+## Запуск локально
 
 ```bash
 npm install
