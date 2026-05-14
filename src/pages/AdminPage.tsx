@@ -136,6 +136,7 @@ function UsersTab() {
   const [users, setUsers] = useState<ApiUser[]>([])
   const [loading, setLoading] = useState(true)
   const [toast, setToast] = useState<string | null>(null)
+  const [deleteConfirmUser, setDeleteConfirmUser] = useState<{ id: string; name: string } | null>(null)
   const [copyingId, setCopyingId] = useState<string | null>(null)
   const [exporting, setExporting] = useState(false)
   const [importing, setImporting] = useState(false)
@@ -163,13 +164,19 @@ function UsersTab() {
     } catch (e: unknown) { showToast((e as Error).message) }
   }
 
-  const handleDelete = async (user: ApiUser) => {
-    if (!confirm(`Удалить ${user.name ?? user.email}? Это действие нельзя отменить.`)) return
+  const handleDeleteRequest = (user: ApiUser) => {
+    setDeleteConfirmUser({ id: user.id, name: user.name ?? user.email })
+  }
+
+  const handleDeleteConfirm = async () => {
+    if (!deleteConfirmUser) return
+    const targetUser = deleteConfirmUser
     try {
-      await api.adminDelUser(user.id)
-      setUsers(prev => prev.filter(u => u.id !== user.id))
+      await api.adminDelUser(targetUser.id)
+      setUsers(prev => prev.filter(u => u.id !== targetUser.id))
       showToast('Пользователь удалён')
     } catch (e: unknown) { showToast((e as Error).message) }
+    finally { setDeleteConfirmUser(null) }
   }
 
   const handleCopyMagicLink = async (user: ApiUser) => {
@@ -296,12 +303,44 @@ function UsersTab() {
                 <ActionBtn onClick={() => handleBan(user)} disabled={!!user.is_admin} title={user.is_banned ? 'Разбанить' : 'Забанить'}>
                   <IconBan />
                 </ActionBtn>
-                <ActionBtn onClick={() => handleDelete(user)} disabled={!!user.is_admin} danger>
+                <ActionBtn onClick={() => handleDeleteRequest(user)} disabled={!!user.is_admin} danger>
                   <IconTrash />
                 </ActionBtn>
               </div>
             </motion.div>
           ))}
+        </div>
+      )}
+
+      {deleteConfirmUser && (
+        <div
+          className="fixed inset-0 z-40 flex items-center justify-center p-4"
+          style={{ background: 'rgba(0,0,0,0.55)', backdropFilter: 'blur(2px)' }}
+        >
+          <div
+            className="w-full max-w-sm rounded-2xl p-5 flex flex-col gap-4"
+            style={{ background: '#171717', border: '1px solid rgba(255,255,255,0.10)' }}
+          >
+            <p className="text-sm leading-relaxed" style={{ color: 'var(--fg-1)' }}>
+              Удалить {deleteConfirmUser.name} навсегда? Это действие нельзя отменить.
+            </p>
+            <div className="flex justify-end gap-2">
+              <button
+                onClick={() => setDeleteConfirmUser(null)}
+                className="px-3 py-2 rounded-lg text-xs font-medium"
+                style={{ background: 'rgba(255,255,255,0.08)', color: 'var(--fg-2)' }}
+              >
+                Отмена
+              </button>
+              <button
+                onClick={handleDeleteConfirm}
+                className="px-3 py-2 rounded-lg text-xs font-bold"
+                style={{ background: 'rgba(255,70,70,0.95)', color: '#fff' }}
+              >
+                Удалить
+              </button>
+            </div>
+          </div>
         </div>
       )}
 
@@ -845,10 +884,10 @@ function RefsTab() {
 
 // ── вкладка "AI" ─────────────────────────────────────────────────────────────
 const PROVIDER_DEFAULTS: Record<string, { label: string; baseUrlHint: string }> = {
-  anthropic: { label: 'Anthropic (Claude)',   baseUrlHint: 'http://151.245.137.147:9000' },
-  openai:    { label: 'OpenAI (GPT)',          baseUrlHint: 'http://151.245.137.147:9001' },
-  google:    { label: 'Google (Gemini)',        baseUrlHint: '' },
-  cursor:    { label: 'Cursor API',            baseUrlHint: 'https://api.cursor.sh' },
+  anthropic: { label: 'Anthropic (Claude)',   baseUrlHint: 'http://172.29.172.1:9000' },
+  openai:    { label: 'OpenAI (GPT)',         baseUrlHint: 'http://172.29.172.1:9004' },
+  google:    { label: 'Google (Gemini)',      baseUrlHint: 'http://172.29.172.1:9002' },
+  cursor:    { label: 'Cursor API',           baseUrlHint: 'http://172.29.172.1:9003' },
 }
 
 function AiTab() {

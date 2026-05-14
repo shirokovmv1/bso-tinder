@@ -776,9 +776,19 @@ router.get('/settings/llm/models', verifyAdmin, async (req, res) => {
         .filter(id => id.startsWith('gemini'))
         .sort()
 
+    } else if (provider === 'cursor') {
+      // Cursor не поддерживает /v1/models — список фиксированный
+      models = [
+        'cursor-small',
+        'gpt-4o',
+        'gpt-4o-mini',
+        'claude-3-5-sonnet-20241022',
+        'claude-3-opus-20240229',
+      ]
     } else {
-      // cursor или custom — OpenAI-совместимый
-      const url = baseUrl ? `${baseUrl}/v1/models` : 'https://api.cursor.sh/v1/models'
+      // custom — OpenAI-совместимый endpoint
+      const url = baseUrl ? `${baseUrl}/v1/models` : null
+      if (!url) return res.status(400).json({ error: 'Укажите Base URL для custom-провайдера' })
       const r = await fetch(url, { headers: { 'Authorization': `Bearer ${apiKey}` } })
       if (!r.ok) {
         const err = await r.json().catch(() => ({}))
@@ -801,12 +811,35 @@ router.get('/settings/llm/models', verifyAdmin, async (req, res) => {
 
 // GET /api/admin/stats/reactions — «Звезды вечера»
 router.get('/stats/reactions', verifyAdmin, (req, res) => {
+  const tableInfo = db.prepare(`
+    SELECT name
+    FROM sqlite_master
+    WHERE type = 'table' AND name IN ('reactions', 'user_reactions')
+    ORDER BY CASE name WHEN 'reactions' THEN 0 ELSE 1 END
+    LIMIT 1
+  `).get()
+
+  if (!tableInfo?.name) {
+    return res.json({ topTotal: [], topByEmoji: [] })
+  }
+
+  const reactionTable = tableInfo.name
+  const columns = new Set(
+    db.prepare(`PRAGMA table_info(${reactionTable})`).all().map(col => col.name)
+  )
+  const toUserColumn = columns.has('to_user_id') ? 'to_user_id' : (columns.has('user_id') ? 'user_id' : null)
+  const typeColumn = columns.has('emoji_type') ? 'emoji_type' : (columns.has('reaction_type_id') ? 'reaction_type_id' : null)
+
+  if (!toUserColumn || !typeColumn) {
+    return res.json({ topTotal: [], topByEmoji: [] })
+  }
+
   // Топ-10 по суммарным реакциям
   const topTotal = db.prepare(`
-    SELECT r.to_user_id as user_id, u.name, u.avatar_url, COUNT(*) as total
-    FROM reactions r
-    JOIN users u ON u.id = r.to_user_id
-    GROUP BY r.to_user_id
+    SELECT r.${toUserColumn} as user_id, u.name, u.avatar_url, COUNT(*) as total
+    FROM ${reactionTable} r
+    JOIN users u ON u.id = r.${toUserColumn}
+    GROUP BY r.${toUserColumn}
     ORDER BY total DESC
     LIMIT 10
   `).all()
@@ -818,11 +851,11 @@ router.get('/stats/reactions', verifyAdmin, (req, res) => {
 
   const topByEmoji = emojiTypes.map(rt => {
     const leaders = db.prepare(`
-      SELECT r.to_user_id as user_id, u.name, u.avatar_url, COUNT(*) as count
-      FROM reactions r
-      JOIN users u ON u.id = r.to_user_id
-      WHERE r.emoji_type = ?
-      GROUP BY r.to_user_id
+      SELECT r.${toUserColumn} as user_id, u.name, u.avatar_url, COUNT(*) as count
+      FROM ${reactionTable} r
+      JOIN users u ON u.id = r.${toUserColumn}
+      WHERE r.${typeColumn} = ?
+      GROUP BY r.${toUserColumn}
       ORDER BY count DESC
       LIMIT 3
     `).all(rt.id)
