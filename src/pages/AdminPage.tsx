@@ -1,4 +1,5 @@
 import { useEffect, useState, useCallback } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import { api, type ApiUser, type ApiDepartment, type ApiHobby, type ApiReactionType, type ApiLlmSettings, type ApiReactionStats, type ApiReactionStatEmoji } from '@/api/client'
 
@@ -1127,12 +1128,20 @@ const TABS: { id: Tab; label: string }[] = [
 
 export default function AdminPage() {
   const [activeTab, setActiveTab] = useState<Tab>('users')
+  const navigate = useNavigate()
 
   return (
     <div className="min-h-screen px-4 py-8" style={{ background: 'var(--bg-page)' }}>
       <div className="max-w-lg mx-auto flex flex-col gap-6">
 
         <motion.div initial={{ opacity: 0, y: -12 }} animate={{ opacity: 1, y: 0 }} className="flex flex-col gap-1">
+          <button
+            onClick={() => navigate(-1)}
+            className="flex items-center gap-1.5 text-sm font-medium mb-2"
+            style={{ color: 'var(--fg-3)' }}
+          >
+            ← Назад
+          </button>
           <h1 className="text-xl font-bold" style={{ color: 'var(--fg-1)' }}>Панель администратора</h1>
           <p className="text-sm" style={{ color: 'var(--fg-3)' }}>БСО Tinder · управление</p>
         </motion.div>

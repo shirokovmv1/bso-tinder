@@ -395,37 +395,70 @@ router.post('/users/import-csv', verifyAdmin, (req, res) => {
 // ── Seed (dev only) ───────────────────────────────────────────────────────────
 
 router.post('/seed', verifyAdmin, (req, res) => {
-  if (process.env.NODE_ENV === 'production') {
-    return res.status(403).json({ error: 'Seed недоступен в production' })
+  if (process.env.APP_ENV !== 'test' && process.env.ALLOW_DEV_LOGIN !== 'true') {
+    return res.status(403).json({ error: 'Seed недоступен вне тестового окружения' })
   }
 
   const depts = db.prepare("SELECT name FROM departments WHERE is_active = 1").all().map(d => d.name)
   const fallbackDepts = ['Логистика', 'Склад', 'IT-отдел', 'Финансы', 'HR']
   const activeDepts = depts.length ? depts : fallbackDepts
 
-  const names = [
-    'Алексей Громов', 'Мария Соколова', 'Дмитрий Волков', 'Екатерина Лебедева',
-    'Сергей Новиков', 'Ольга Петрова', 'Никита Морозов', 'Анна Козлова',
-    'Павел Зайцев', 'Юлия Смирнова',
+  // 10 seed-пользователей с полными профилями
+  const people = [
+    { last: 'Громов',    first: 'Алексей',   gender: 'm', pos: 'Менеджер по логистике',     exp: 48,  zodiac: 'leo',         color: 'orange', day: 12, month: 8,  films: 'action,scifi',             books: 'nonfiction,business',       music: 'rock,pop',        about: 'Занимаюсь логистикой 4 года. Люблю системность.' },
+    { last: 'Соколова',  first: 'Мария',     gender: 'f', pos: 'Аналитик данных',            exp: 24,  zodiac: 'virgo',       color: 'blue',   day: 5,  month: 9,  films: 'drama,romance',            books: 'selfdev,classics',          music: 'pop,indie',       about: 'Работаю с данными и процессами. Обожаю книги.' },
+    { last: 'Волков',    first: 'Дмитрий',   gender: 'm', pos: 'Водитель-экспедитор',        exp: 84,  zodiac: 'aries',       color: 'red',    day: 21, month: 3,  films: 'action,comedy',            books: 'adventure,humor',           music: 'rock,metal',      about: '7 лет в дороге. Знаю все маршруты наизусть.' },
+    { last: 'Лебедева',  first: 'Екатерина', gender: 'f', pos: 'HR-специалист',              exp: 36,  zodiac: 'libra',       color: 'pink',   day: 10, month: 10, films: 'romance,comedy',           books: 'romance_book,selfdev',      music: 'pop,rnb',         about: 'Подбираю людей и создаю атмосферу в команде.' },
+    { last: 'Новиков',   first: 'Сергей',    gender: 'm', pos: 'IT-специалист',              exp: 60,  zodiac: 'sagittarius', color: 'green',  day: 3,  month: 12, films: 'scifi,thriller',           books: 'sci_fi_book,nonfiction',    music: 'electronic,rock', about: 'Автоматизирую всё что можно. Фанат технологий.' },
+    { last: 'Петрова',   first: 'Ольга',     gender: 'f', pos: 'Бухгалтер',                  exp: 96,  zodiac: 'taurus',      color: 'purple', day: 17, month: 5,  films: 'drama,documentary',        books: 'classics,nonfiction',       music: 'classical,jazz',  about: '8 лет в финансах. Точность — мой принцип.' },
+    { last: 'Морозов',   first: 'Никита',    gender: 'm', pos: 'Складской работник',         exp: 12,  zodiac: 'gemini',      color: 'blue',   day: 8,  month: 6,  films: 'comedy,action',            books: 'adventure,humor',           music: 'rap,electronic',  about: 'Новичок, но уже в теме. Учусь быстро.' },
+    { last: 'Козлова',   first: 'Анна',      gender: 'f', pos: 'Менеджер по закупкам',       exp: 30,  zodiac: 'cancer',      color: 'orange', day: 25, month: 7,  films: 'fantasy,drama',            books: 'fantasy_book,romance_book', music: 'indie,pop',       about: 'Нахожу лучшие условия для компании. Переговорщик.' },
+    { last: 'Зайцев',    first: 'Павел',     gender: 'm', pos: 'Таможенный брокер',          exp: 72,  zodiac: 'capricorn',   color: 'black',  day: 14, month: 1,  films: 'thriller,scifi',           books: 'business,detective',        music: 'jazz,rock',       about: 'Специализируюсь на таможенном оформлении грузов.' },
+    { last: 'Смирнова',  first: 'Юлия',      gender: 'f', pos: 'Специалист по документам',   exp: 18,  zodiac: 'pisces',      color: 'purple', day: 29, month: 3,  films: 'romance,comedy',           books: 'selfdev,romance_book',      music: 'pop,rnb',         about: 'Слежу за порядком в документах. Люблю порядок.' },
   ]
-  // Только дочерние хобби (с parent_id) для назначения пользователям
-  const allHobbies = db.prepare('SELECT id FROM hobbies WHERE parent_id IS NOT NULL').all().map(h => h.id)
 
-  const insertUser = db.prepare(
-    'INSERT OR IGNORE INTO users (id, email, name, department, avatar_url, badge_id, onboarding_done) VALUES (?, ?, ?, ?, ?, ?, 1)'
-  )
+  // Общее ядро хобби у всех (гарантирует overlap)
+  const CORE_HOBBIES = ['movies', 'coffee', 'music', 'travel', 'cooking']
+  // Переменный пул — каждый берёт 3 из этих
+  const VARIED_POOL = ['gym', 'series', 'books', 'boardgames', 'quiz', 'gaming', 'podcasts', 'running', 'ai', 'design']
+
+  const insertUser = db.prepare(`
+    INSERT OR IGNORE INTO users (
+      id, email, name, last_name, first_name, department, avatar_url, badge_id,
+      onboarding_done, gender, position, experience_months,
+      birthday_day, birthday_month, zodiac_sign, fav_color,
+      last_movies, last_books, last_songs, about_short
+    ) VALUES (
+      ?, ?, ?, ?, ?, ?, ?, ?,
+      1, ?, ?, ?,
+      ?, ?, ?, ?,
+      ?, ?, ?, ?
+    )
+  `)
   const insertHobby = db.prepare('INSERT OR IGNORE INTO user_hobbies (user_id, hobby_id) VALUES (?, ?)')
 
   const inserted = db.transaction(() => {
     let count = 0
-    for (const name of names) {
+    for (const p of people) {
       const id = uuidv4()
-      const email = `${name.toLowerCase().replace(/\s/g, '.')}@bso-cc.ru`
+      const fullName = `${p.last} ${p.first}`
+      const email = `${p.first.toLowerCase()}.${p.last.toLowerCase()}@bso-cc.ru`
       const dept = activeDepts[Math.floor(Math.random() * activeDepts.length)]
-      const avatar = `https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(name)}`
-      insertUser.run(id, email, name, dept, avatar, 'allrounder')
-      const picked = [...allHobbies].sort(() => 0.5 - Math.random()).slice(0, 5 + Math.floor(Math.random() * 3))
-      for (const hid of picked) insertHobby.run(id, hid)
+      const avatarStyle = p.gender === 'f' ? 'lorelei' : 'micah'
+      const avatar = `https://api.dicebear.com/7.x/${avatarStyle}/svg?seed=${encodeURIComponent(p.first)}`
+
+      insertUser.run(
+        id, email, fullName, p.last, p.first, dept, avatar, 'allrounder',
+        p.gender, p.pos, p.exp,
+        p.day, p.month, p.zodiac, p.color,
+        p.films, p.books, p.music, p.about
+      )
+
+      // 5 общих + 3 уникальных из varied pool
+      const varied = [...VARIED_POOL].sort(() => 0.5 - Math.random()).slice(0, 3)
+      for (const hid of [...CORE_HOBBIES, ...varied]) {
+        insertHobby.run(id, hid)
+      }
       count++
     }
     return count

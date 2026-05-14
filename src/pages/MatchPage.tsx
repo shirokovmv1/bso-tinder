@@ -216,6 +216,7 @@ function MatchCard({ match, selected, reactionTypes, pendingReaction, onSelect, 
           <div className="mt-1 flex items-center gap-2">
             <span className="text-[12px] font-black text-orange-300">{match.score}%</span>
             <span className="text-[12px] font-bold text-white/55">{match.level.label}</span>
+            {match.aiEnhanced && <span className="text-[12px]" title="AI-улучшено">✨</span>}
           </div>
         </div>
         <span className="text-white/30 text-2xl font-black shrink-0">{selected ? '⌃' : '›'}</span>
@@ -242,6 +243,12 @@ function MatchCard({ match, selected, reactionTypes, pendingReaction, onSelect, 
             className="overflow-hidden"
           >
             <div className="pt-4 mt-4 border-t border-white/10">
+              {!!match.icebreaker && (
+                <div className="mb-3 rounded-xl px-3 py-2 bg-orange-500/10 border border-orange-500/20">
+                  <div className="text-[10px] font-black uppercase tracking-[0.12em] text-orange-300/70">Повод для разговора</div>
+                  <div className="text-[13px] font-semibold text-white/80 mt-0.5">{match.icebreaker}</div>
+                </div>
+              )}
               {!!match.user.badge_title && (
                 <div className="mb-3 rounded-xl px-3 py-2 bg-white/5 border border-white/10">
                   <div className="text-[10px] font-black uppercase tracking-[0.12em] text-white/40">Бейдж</div>

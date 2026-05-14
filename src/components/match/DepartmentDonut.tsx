@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 
 export interface DonutSegment {
   id: string      // department key/slug
@@ -13,19 +13,35 @@ interface DepartmentDonutProps {
   loading?: boolean
 }
 
-// Preset colours matching MatchPage TONES order
+// Preset colours — extended with fallback generator
 export const DEPT_COLORS: Record<string, string> = {
-  'Логистика': '#FF6B00',
-  'Стройка':   '#5b6cff',
-  'IT':        '#34D399',
-  'Финансы':   '#B388FF',
-  'HR':        '#FF8FAB',
+  'Логистика':       '#FF6B00',
+  'Стройка':         '#5b6cff',
+  'IT':              '#34D399',
+  'IT-отдел':        '#34D399',
+  'Финансы':         '#B388FF',
+  'HR':              '#FF8FAB',
+  'Склад':           '#F2C879',
+  'Таможня':         '#6ED7B7',
+  'Закупки':         '#F59E7A',
+  'Документооборот': '#C4A7FF',
+  'Бухгалтерия':     '#FCA5A5',
+  'Маркетинг':       '#8EA4FF',
+}
+
+function colorForDept(name: string): string {
+  const hue = name.split('').reduce((acc, c) => acc + c.charCodeAt(0), 0) % 360
+  return `hsl(${hue}, 70%, 58%)`
+}
+
+export function getDeptColor(name: string): string {
+  return DEPT_COLORS[name] ?? colorForDept(name)
 }
 
 // Fixed viewBox - component scales via CSS width/aspect-ratio
 const VB = 320
 const CX = 160, CY = 160
-const OUTER_R = 148, INNER_R = 82
+const OUTER_R = 148, INNER_R = 70
 const MID_R = (OUTER_R + INNER_R) / 2
 const GAP_DEG = 3
 const LABEL_LINE_LIMIT = 13
@@ -81,12 +97,22 @@ function splitLabel(label: string): string[] {
   return secondLine ? [firstLine, secondLine] : [firstLine]
 }
 
+function formatTime(d: Date): string {
+  return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
+}
+
 export default function DepartmentDonut({
   segments,
   onSegmentClick,
   loading = false,
 }: DepartmentDonutProps) {
   const [hoveredId, setHoveredId] = useState<string | null>(null)
+  const [time, setTime] = useState(() => formatTime(new Date()))
+
+  useEffect(() => {
+    const id = setInterval(() => setTime(formatTime(new Date())), 10000)
+    return () => clearInterval(id)
+  }, [])
 
   if (segments.length === 0) return null
 
@@ -103,7 +129,9 @@ export default function DepartmentDonut({
     const [nx, ny] = polar(MID_R + 35, midDeg)
     const labelRotation = midDeg > 90 && midDeg < 270 ? midDeg + 90 : midDeg - 90
     const labelLines = splitLabel(seg.label)
-    return { ...seg, path: buildArcPath(startDeg, endDeg), lx, ly, nx, ny, labelRotation, labelLines }
+    // Hex alpha 35% для неактивных сегментов
+    const dimColor = seg.color.startsWith('#') ? `${seg.color}59` : seg.color
+    return { ...seg, path: buildArcPath(startDeg, endDeg), lx, ly, nx, ny, labelRotation, labelLines, dimColor }
   })
 
   return (
@@ -114,6 +142,15 @@ export default function DepartmentDonut({
         role="img"
         aria-label="Распределение матчей по отделам"
       >
+        <defs>
+          {built.map(seg => (
+            <linearGradient key={`grad-${seg.id}`} id={`grad-${seg.id}`} x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%" stopColor={seg.color} stopOpacity="1" />
+              <stop offset="100%" stopColor={seg.color} stopOpacity="0.72" />
+            </linearGradient>
+          ))}
+        </defs>
+
         {/* Sectors */}
         {built.map(seg => {
           const active = seg.count > 0
@@ -132,17 +169,20 @@ export default function DepartmentDonut({
             >
               <path
                 d={seg.path}
-                fill={active ? seg.color : 'rgba(255,255,255,0.07)'}
-                stroke="rgba(0,0,0,0.28)"
+                fill={active ? `url(#grad-${seg.id})` : seg.dimColor}
+                stroke="rgba(0,0,0,0.22)"
                 strokeWidth="1.5"
-                opacity={hovered ? 0.78 : 1}
-                style={{ transition: 'opacity .15s, filter .15s' }}
+                style={{
+                  transition: 'opacity .15s, filter .15s',
+                  filter: hovered ? `drop-shadow(0 0 8px ${seg.color})` : 'none',
+                  opacity: hovered ? 0.88 : 1,
+                }}
               />
 
               <text
                 x={seg.lx} y={seg.ly}
                 textAnchor="middle" dominantBaseline="middle"
-                fill={active ? 'rgba(255,255,255,0.92)' : 'rgba(255,255,255,0.30)'}
+                fill={active ? 'rgba(255,255,255,0.93)' : 'rgba(255,255,255,0.35)'}
                 fontSize={seg.labelLines.length > 1 ? '8.4' : '9.2'}
                 fontWeight="850"
                 fontFamily="Manrope, system-ui, sans-serif"
@@ -177,7 +217,19 @@ export default function DepartmentDonut({
           )
         })}
 
-        {/* Loading arc — a glowing dot running around the outer edge */}
+        {/* Clock in center */}
+        <text
+          x={CX} y={CY}
+          textAnchor="middle" dominantBaseline="middle"
+          fill="rgba(255,255,255,0.85)"
+          fontSize="28" fontWeight="800"
+          fontFamily="Manrope, system-ui, sans-serif"
+          style={{ pointerEvents: 'none', userSelect: 'none' }}
+        >
+          {time}
+        </text>
+
+        {/* Loading arc */}
         {loading && (
           <circle
             cx={CX} cy={CY}

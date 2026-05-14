@@ -4,6 +4,7 @@ const { v4: uuidv4 } = require('uuid')
 const { verifyJWT } = require('../middleware/auth')
 const db = require('../db')
 const logger = require('../logger')
+const { generateMatch } = require('../ai')
 
 const ICEBREAKERS = {
   high: [
@@ -65,7 +66,8 @@ function getUserWithHobbies(uid) {
     SELECT id, email, name, last_name, first_name, middle_name, position,
            department, birthday_day, birthday_month, avatar_url, badge_id,
            gender, experience_months, about_short, work_details, current_interests,
-           last_movies, last_books, last_songs, pitch, badge_title, badge_emoji, badge_reason
+           last_movies, last_books, last_songs, zodiac_sign, fav_color,
+           pitch, badge_title, badge_emoji, badge_reason
     FROM users
     WHERE id = ? AND is_banned = 0
   `).get(uid)
@@ -78,6 +80,28 @@ function getMatchLevel(score) {
   if (score >= 70) return { id: 'strong', label: 'Сильный матч' }
   if (score >= 50) return { id: 'moderate', label: 'Умеренный матч' }
   return { id: 'none', label: 'Матча нет' }
+}
+
+const ZODIAC_ELEMENTS = {
+  fire:  new Set(['aries', 'leo', 'sagittarius']),
+  earth: new Set(['taurus', 'virgo', 'capricorn']),
+  air:   new Set(['gemini', 'libra', 'aquarius']),
+  water: new Set(['cancer', 'scorpio', 'pisces']),
+}
+
+function genreOverlap(aStr, bStr, cap) {
+  const a = (aStr || '').split(',').map(s => s.trim()).filter(Boolean)
+  const b = new Set((bStr || '').split(',').map(s => s.trim()).filter(Boolean))
+  return Math.min(cap, a.filter(g => b.has(g)).length * 2)
+}
+
+function expBracket(months) {
+  if (!months) return -1
+  if (months < 6) return 0
+  if (months < 12) return 1
+  if (months < 24) return 2
+  if (months < 60) return 3
+  return 4
 }
 
 function computeOfflineMatch(a, b) {
@@ -100,7 +124,33 @@ function computeOfflineMatch(a, b) {
   if (a.birthday_day && b.birthday_day && a.birthday_day === b.birthday_day) birthdayBonus += 5
   if (a.birthday_month && b.birthday_month && a.birthday_month === b.birthday_month) birthdayBonus += 5
 
-  const score = Math.min(100, hobbyScore + categoryBonus + birthdayBonus)
+  // Жанры фильмов/книг/музыки
+  const movieBonus = genreOverlap(a.last_movies, b.last_movies, 8)
+  const bookBonus  = genreOverlap(a.last_books,  b.last_books,  8)
+  const musicBonus = genreOverlap(a.last_songs,  b.last_songs,  8)
+
+  // Зодиак: точное совпадение +8, одна стихия +4
+  let zodiacBonus = 0
+  if (a.zodiac_sign && b.zodiac_sign) {
+    if (a.zodiac_sign === b.zodiac_sign) {
+      zodiacBonus = 8
+    } else {
+      const elem = Object.entries(ZODIAC_ELEMENTS).find(([, s]) => s.has(a.zodiac_sign))?.[0]
+      if (elem && ZODIAC_ELEMENTS[elem].has(b.zodiac_sign)) zodiacBonus = 4
+    }
+  }
+
+  // Любимый цвет +3, отдел +5, стаж одна скобка +3
+  const colorBonus = (a.fav_color && a.fav_color === b.fav_color) ? 3 : 0
+  const deptBonus  = (a.department && a.department === b.department) ? 5 : 0
+  const expBonus   = expBracket(a.experience_months) >= 0 &&
+                     expBracket(a.experience_months) === expBracket(b.experience_months) ? 3 : 0
+
+  const score = Math.min(100,
+    hobbyScore + categoryBonus + birthdayBonus +
+    movieBonus + bookBonus + musicBonus +
+    zodiacBonus + colorBonus + deptBonus + expBonus
+  )
   const level = getMatchLevel(score)
   const sharedText = shared.length
     ? `Общие темы: ${shared.slice(0, 3).map(h => h.label).join(', ')}.`
@@ -193,7 +243,7 @@ router.post('/', verifyJWT, (req, res) => {
 })
 
 // POST /api/match/me — пересчитать текущие совпадения без сохранения результата
-router.post('/me', verifyJWT, (req, res) => {
+router.post('/me', verifyJWT, async (req, res) => {
   const currentUser = getUserWithHobbies(req.user.id)
   if (!currentUser) return res.status(404).json({ error: 'Пользователь не найден' })
 
@@ -203,12 +253,13 @@ router.post('/me', verifyJWT, (req, res) => {
     WHERE id != ? AND is_banned = 0 AND is_admin = 0 AND onboarding_done = 1
   `).all(req.user.id)
 
-  const matches = candidates
+  const localMatches = candidates
     .map(row => getUserWithHobbies(row.id))
     .filter(Boolean)
     .map(user => {
       const result = computeOfflineMatch(currentUser, user)
       return {
+        _user: user,
         user: {
           id: user.id,
           name: [user.last_name, user.first_name].filter(Boolean).join(' ') || user.name || user.email,
@@ -229,7 +280,27 @@ router.post('/me', verifyJWT, (req, res) => {
     .filter(match => match.score >= 50)
     .sort((a, b) => b.score - a.score)
 
-  logger.info('Offline matches computed', { userId: req.user.id, count: matches.length })
+  // AI-улучшение для топ-3 (если ключ настроен — generateMatch вернёт null без ключа)
+  const TOP_AI = 3
+  const aiResults = await Promise.allSettled(
+    localMatches.slice(0, TOP_AI).map(m => generateMatch(currentUser, m._user))
+  )
+
+  const matches = localMatches.map((m, i) => {
+    const aiResult = i < TOP_AI ? (aiResults[i].status === 'fulfilled' ? aiResults[i].value : null) : null
+    const { _user, ...rest } = m
+    return {
+      ...rest,
+      ...(aiResult ? {
+        score: aiResult.score ?? rest.score,
+        pitch: aiResult.description || rest.pitch,
+        icebreaker: aiResult.icebreaker,
+        aiEnhanced: true,
+      } : {}),
+    }
+  })
+
+  logger.info('Matches computed', { userId: req.user.id, count: matches.length, aiEnhanced: Math.min(TOP_AI, localMatches.length) })
   res.json({
     groups: groupMatchesByDepartment(matches),
     total: matches.length,

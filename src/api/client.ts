@@ -248,6 +248,8 @@ export interface ApiMatchedUser {
   level: { id: string; label: string }
   pitch: string
   sharedHobbies: ApiHobby[]
+  icebreaker?: string
+  aiEnhanced?: boolean
 }
 
 export interface ApiDepartmentMatchGroup {

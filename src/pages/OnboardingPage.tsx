@@ -12,6 +12,11 @@ const MAX_AVATAR_SIDE = 256
 const MAX_AVATAR_BYTES = 300 * 1024
 const MIN_HOBBIES = 6
 
+const MONTHS_RU = [
+  'Январь','Февраль','Март','Апрель','Май','Июнь',
+  'Июль','Август','Сентябрь','Октябрь','Ноябрь','Декабрь',
+]
+
 const EXPERIENCE_OPTIONS = [
   { label: 'Менее года', months: 6 },
   { label: '1-3 года', months: 24 },
@@ -172,7 +177,10 @@ export default function OnboardingPage() {
         position: position.trim(),
         birthday_day: birthdayDay ? Number(birthdayDay) : null,
         birthday_month: birthdayMonth ? Number(birthdayMonth) : null,
-        avatar_url: photoUrl || currentUser.avatar_url || `https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(firstName)}`,
+        avatar_url: photoUrl || currentUser.avatar_url || (() => {
+          const style = gender === 'f' ? 'lorelei' : 'micah'
+          return `https://api.dicebear.com/7.x/${style}/svg?seed=${encodeURIComponent(firstName)}`
+        })(),
         badge_id: badge.id,
         hobbyIds: selectedHobbies.map(h => h.id),
         ...(gender ? { gender } : {}),
@@ -265,7 +273,7 @@ export default function OnboardingPage() {
                   </SelectField>
                   <SelectField label="Месяц" value={birthdayMonth} onChange={setBirthdayMonth}>
                     <option value="" className="bg-graphite-900">Месяц</option>
-                    {Array.from({ length: 12 }, (_, i) => <option key={i + 1} value={i + 1} className="bg-graphite-900">{i + 1}</option>)}
+                    {MONTHS_RU.map((m, i) => <option key={i + 1} value={i + 1} className="bg-graphite-900">{m}</option>)}
                   </SelectField>
                 </div>
 

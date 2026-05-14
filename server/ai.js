@@ -204,4 +204,94 @@ function generatePitchAndBadge({ gender, experienceMonths, department, hobbies }
   return { pitch, badge_title, badge_emoji, badge_reason }
 }
 
-module.exports = { generatePitch, generatePitchAndBadge }
+// ── AI-матч: оценка совместимости двух сотрудников ──────────────────────────
+
+async function generateMatch(userA, userB) {
+  const cfg = getLlmConfig()
+  const provider = cfg.llm_provider || 'openai'
+  const apiKey   = cfg.llm_api_key
+  const model    = cfg.llm_model
+  const baseUrl  = cfg.llm_base_url?.replace(/\/$/, '')
+
+  if (!apiKey || !model) return null
+
+  function userBlock(u) {
+    const name = [u.last_name, u.first_name].filter(Boolean).join(' ') || u.name || u.email
+    const hobbies = (u.hobbies || []).map(h => h.label).join(', ') || '—'
+    return [
+      `Имя: ${name}`,
+      `Отдел: ${u.department || '—'} | Должность: ${u.position || '—'} | Стаж: ${u.experience_months ? u.experience_months + ' мес.' : '—'}`,
+      `Хобби: ${hobbies}`,
+      `Кино: ${u.last_movies || '—'} | Книги: ${u.last_books || '—'} | Музыка: ${u.last_songs || '—'}`,
+      `Знак зодиака: ${u.zodiac_sign || '—'} | Цвет: ${u.fav_color || '—'}`,
+      u.about_short ? `О себе: ${u.about_short}` : null,
+      u.current_interests ? `Сейчас увлечён(а): ${u.current_interests}` : null,
+    ].filter(Boolean).join('\n')
+  }
+
+  const prompt = `Ты HR-ассистент корпоративного нетворкинга. Оцени совместимость двух сотрудников для знакомства и совместной работы.
+
+СОТРУДНИК А:
+${userBlock(userA)}
+
+СОТРУДНИК Б:
+${userBlock(userB)}
+
+Ответь строго в JSON без markdown:
+{
+  "score": <число 0-100>,
+  "description": "<3-4 предложения — что объединяет, о чём поговорить, почему познакомиться>",
+  "icebreaker": "<одна фраза-повод начать разговор>"
+}`
+
+  try {
+    let text
+
+    if (provider === 'anthropic') {
+      const url = baseUrl ? `${baseUrl}/v1/messages` : 'https://api.anthropic.com/v1/messages'
+      const r = await fetch(url, {
+        method: 'POST',
+        headers: { 'x-api-key': apiKey, 'anthropic-version': '2023-06-01', 'content-type': 'application/json' },
+        body: JSON.stringify({ model, max_tokens: 512, messages: [{ role: 'user', content: prompt }] }),
+      })
+      if (!r.ok) throw new Error(`Anthropic ${r.status}`)
+      text = (await r.json()).content?.[0]?.text
+
+    } else if (provider === 'google') {
+      const base = baseUrl || 'https://generativelanguage.googleapis.com'
+      const r = await fetch(`${base}/v1beta/models/${model}:generateContent?key=${apiKey}`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }] }),
+      })
+      if (!r.ok) throw new Error(`Google ${r.status}`)
+      text = (await r.json()).candidates?.[0]?.content?.parts?.[0]?.text
+
+    } else {
+      const url = baseUrl
+        ? `${baseUrl}/v1/chat/completions`
+        : provider === 'cursor'
+          ? 'https://api.cursor.sh/v1/chat/completions'
+          : 'https://api.openai.com/v1/chat/completions'
+      const r = await fetch(url, {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${apiKey}`, 'content-type': 'application/json' },
+        body: JSON.stringify({ model, max_tokens: 512, messages: [{ role: 'user', content: prompt }] }),
+      })
+      if (!r.ok) throw new Error(`${provider} ${r.status}`)
+      text = (await r.json()).choices?.[0]?.message?.content
+    }
+
+    if (!text) throw new Error('Пустой ответ от модели')
+    const result = JSON.parse(text.replace(/```json|```/g, '').trim())
+    if (typeof result.score !== 'number' || !result.description) throw new Error('Некорректный JSON')
+    logger.info('AI match generated', { provider, model })
+    return result
+
+  } catch (e) {
+    logger.warn('AI match failed', { error: e.message })
+    return null
+  }
+}
+
+module.exports = { generatePitch, generatePitchAndBadge, generateMatch }
