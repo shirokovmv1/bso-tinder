@@ -117,6 +117,20 @@ function arrayBufferToBase64(buffer: ArrayBuffer) {
   return btoa(binary)
 }
 
+async function copyToClipboard(text: string): Promise<void> {
+  if (navigator.clipboard?.writeText) {
+    await navigator.clipboard.writeText(text)
+    return
+  }
+  const ta = document.createElement('textarea')
+  ta.value = text
+  ta.style.cssText = 'position:fixed;top:0;left:0;opacity:0'
+  document.body.appendChild(ta)
+  ta.select()
+  document.execCommand('copy')
+  document.body.removeChild(ta)
+}
+
 // ── вкладка "Пользователи" ──────────────────────────────────────────────────
 function UsersTab() {
   const [users, setUsers] = useState<ApiUser[]>([])
@@ -162,7 +176,7 @@ function UsersTab() {
     setCopyingId(user.id)
     try {
       const res = await api.adminGetMagicLink(user.id)
-      await navigator.clipboard.writeText(res.magic_url)
+      await copyToClipboard(res.magic_url)
       showToast('Magic Link скопирован!')
     } catch { showToast('Не удалось скопировать ссылку') }
     finally { setCopyingId(null) }
@@ -982,12 +996,16 @@ function AiTab() {
 
       <button
         onClick={handleSave}
-        disabled={saving || !model}
+        disabled={saving}
         className="w-full py-2.5 rounded-xl text-sm font-bold transition-opacity disabled:opacity-40"
         style={{ background: 'var(--brand-orange)', color: '#fff' }}
       >
         {saving ? 'Сохраняем...' : 'Сохранить настройки'}
       </button>
+
+      <p className="text-center text-[11px]" style={{ color: 'var(--fg-3)' }}>
+        Сначала сохраните ключ, затем нажмите 🔄 для загрузки моделей
+      </p>
 
       <AnimatePresence>
         {toast && <Toast message={toast} onDone={() => setToast(null)} />}

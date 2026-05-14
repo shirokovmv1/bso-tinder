@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 
 export interface DonutSegment {
   id: string      // department key/slug
@@ -11,6 +11,7 @@ interface DepartmentDonutProps {
   segments: DonutSegment[]
   onSegmentClick?: (seg: DonutSegment) => void
   loading?: boolean
+  elapsedSeconds?: number
 }
 
 // Preset colours — extended with fallback generator
@@ -97,22 +98,19 @@ function splitLabel(label: string): string[] {
   return secondLine ? [firstLine, secondLine] : [firstLine]
 }
 
-function formatTime(d: Date): string {
-  return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
+function formatElapsed(s: number): string {
+  const m = Math.floor(s / 60)
+  const sec = s % 60
+  return `${String(m).padStart(2, '0')}:${String(sec).padStart(2, '0')}`
 }
 
 export default function DepartmentDonut({
   segments,
   onSegmentClick,
   loading = false,
+  elapsedSeconds,
 }: DepartmentDonutProps) {
   const [hoveredId, setHoveredId] = useState<string | null>(null)
-  const [time, setTime] = useState(() => formatTime(new Date()))
-
-  useEffect(() => {
-    const id = setInterval(() => setTime(formatTime(new Date())), 10000)
-    return () => clearInterval(id)
-  }, [])
 
   if (segments.length === 0) return null
 
@@ -226,7 +224,7 @@ export default function DepartmentDonut({
           fontFamily="Manrope, system-ui, sans-serif"
           style={{ pointerEvents: 'none', userSelect: 'none' }}
         >
-          {time}
+          {formatElapsed(elapsedSeconds ?? 0)}
         </text>
 
         {/* Loading arc */}

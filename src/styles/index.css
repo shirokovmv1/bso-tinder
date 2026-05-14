@@ -243,7 +243,7 @@ body {
 }
 
 .donut-loading-arc {
-  animation: donutSpin 3s linear infinite;
+  animation: donutSpin 7s linear infinite;
   transform-box: fill-box;
   transform-origin: 50% 50%;
   filter: drop-shadow(0 0 6px var(--brand-orange)) drop-shadow(0 0 2px rgba(255,255,255,0.5));

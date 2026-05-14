@@ -415,6 +415,18 @@ router.post('/seed', verifyAdmin, (req, res) => {
     { last: 'Козлова',   first: 'Анна',      gender: 'f', pos: 'Менеджер по закупкам',       exp: 30,  zodiac: 'cancer',      color: 'orange', day: 25, month: 7,  films: 'fantasy,drama',            books: 'fantasy_book,romance_book', music: 'indie,pop',       about: 'Нахожу лучшие условия для компании. Переговорщик.' },
     { last: 'Зайцев',    first: 'Павел',     gender: 'm', pos: 'Таможенный брокер',          exp: 72,  zodiac: 'capricorn',   color: 'black',  day: 14, month: 1,  films: 'thriller,scifi',           books: 'business,detective',        music: 'jazz,rock',       about: 'Специализируюсь на таможенном оформлении грузов.' },
     { last: 'Смирнова',  first: 'Юлия',      gender: 'f', pos: 'Специалист по документам',   exp: 18,  zodiac: 'pisces',      color: 'purple', day: 29, month: 3,  films: 'romance,comedy',           books: 'selfdev,romance_book',      music: 'pop,rnb',         about: 'Слежу за порядком в документах. Люблю порядок.' },
+    { last: 'Карпов',     first: 'Игорь',     gender: 'm', pos: 'Таможенный инспектор',       exp: 36,  zodiac: 'capricorn',   color: 'blue',   day: 19, month: 1,  films: 'thriller,documentary',    books: 'business,nonfiction',       music: 'jazz,classical',  about: 'Занимаюсь таможенным оформлением. Точность важна.' },
+    { last: 'Иванова',    first: 'Дарья',     gender: 'f', pos: 'Маркетолог',                  exp: 18,  zodiac: 'aquarius',    color: 'pink',   day: 11, month: 2,  films: 'comedy,romance',           books: 'selfdev,romance_book',      music: 'pop,indie',       about: 'Создаю контент и продвигаю бренд компании.' },
+    { last: 'Попов',      first: 'Артём',     gender: 'm', pos: 'Кладовщик',                   exp: 60,  zodiac: 'taurus',      color: 'green',  day: 7,  month: 5,  films: 'action,comedy',            books: 'adventure,humor',           music: 'rock,metal',      about: 'Знаю склад как свои пять пальцев.' },
+    { last: 'Фролова',    first: 'Кристина',  gender: 'f', pos: 'Бухгалтер',                   exp: 24,  zodiac: 'virgo',       color: 'purple', day: 23, month: 9,  films: 'drama,documentary',        books: 'classics,nonfiction',       music: 'classical,jazz',  about: 'Слежу за финансовыми потоками. Порядок — прежде всего.' },
+    { last: 'Беляев',     first: 'Максим',    gender: 'm', pos: 'Разработчик',                 exp: 12,  zodiac: 'gemini',      color: 'blue',   day: 3,  month: 6,  films: 'scifi,thriller',           books: 'sci_fi_book,nonfiction',    music: 'electronic,rock', about: 'Junior dev, быстро учусь, обожаю автоматизацию.' },
+    { last: 'Орлова',     first: 'Валерия',   gender: 'f', pos: 'HR-менеджер',                 exp: 48,  zodiac: 'libra',       color: 'orange', day: 14, month: 10, films: 'romance,drama',            books: 'selfdev,classics',          music: 'pop,rnb',         about: 'Помогаю людям раскрыть потенциал.' },
+    { last: 'Жуков',      first: 'Виктор',    gender: 'm', pos: 'Экспедитор',                  exp: 96,  zodiac: 'aries',       color: 'red',    day: 27, month: 3,  films: 'action,documentary',       books: 'adventure,nonfiction',      music: 'rock,pop',        about: '8 лет за рулём по всей стране. Маршруты знаю наизусть.' },
+    { last: 'Антонова',   first: 'Яна',       gender: 'f', pos: 'Финансовый аналитик',         exp: 30,  zodiac: 'scorpio',     color: 'purple', day: 9,  month: 11, films: 'drama,thriller',           books: 'business,nonfiction',       music: 'indie,pop',       about: 'Анализирую данные, нахожу скрытые закономерности.' },
+    { last: 'Тарасов',    first: 'Геннадий',  gender: 'm', pos: 'Прораб',                      exp: 72,  zodiac: 'leo',         color: 'black',  day: 1,  month: 8,  films: 'action,comedy',            books: 'nonfiction,adventure',      music: 'rock,jazz',       about: '6 лет на стройке. Умею организовать и сделать.' },
+    { last: 'Михайлова',  first: 'Елена',     gender: 'f', pos: 'Менеджер по закупкам',        exp: 42,  zodiac: 'cancer',      color: 'pink',   day: 20, month: 7,  films: 'romance,fantasy',          books: 'fantasy_book,classics',     music: 'pop,classical',   about: 'Нахожу лучших поставщиков. Переговоры — моя стихия.' },
+    { last: 'Комаров',    first: 'Денис',     gender: 'm', pos: 'Специалист по документам',    exp: 9,   zodiac: 'sagittarius', color: 'green',  day: 16, month: 12, films: 'comedy,scifi',             books: 'humor,sci_fi_book',         music: 'rap,electronic',  about: 'Только начинаю, но уже разобрался с документооборотом.' },
+    { last: 'Степанова',  first: 'Алина',     gender: 'f', pos: 'IT-аналитик',                 exp: 54,  zodiac: 'pisces',      color: 'blue',   day: 28, month: 3,  films: 'scifi,drama',              books: 'sci_fi_book,selfdev',       music: 'indie,electronic', about: 'Связываю бизнес и технологии. Люблю красивые решения.' },
   ]
 
   // Общее ядро хобби у всех (гарантирует overlap)
@@ -453,6 +465,11 @@ router.post('/seed', verifyAdmin, (req, res) => {
         p.day, p.month, p.zodiac, p.color,
         p.films, p.books, p.music, p.about
       )
+      db.prepare(`
+        UPDATE users
+        SET avatar_url = ?
+        WHERE email = ? AND (avatar_url IS NULL OR avatar_url LIKE '%avataaars%')
+      `).run(avatar, email)
 
       // 5 общих + 3 уникальных из varied pool
       const varied = [...VARIED_POOL].sort(() => 0.5 - Math.random()).slice(0, 3)

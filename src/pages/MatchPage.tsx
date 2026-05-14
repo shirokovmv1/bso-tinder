@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { AnimatePresence, motion } from 'framer-motion'
 import { api, type ApiDepartment, type ApiDepartmentMatchGroup, type ApiMatchedUser, type ApiReactionType } from '@/api/client'
@@ -26,10 +26,23 @@ export default function MatchPage() {
   const [loadError, setLoadError] = useState('')
   const [emptyMessage, setEmptyMessage] = useState('')
   const [pendingReaction, setPendingReaction] = useState<string | null>(null)
+  const [elapsed, setElapsed] = useState(0)
+  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null)
+
+  function stopTimer() {
+    if (timerRef.current) {
+      clearInterval(timerRef.current)
+      timerRef.current = null
+    }
+  }
 
   useEffect(() => {
     api.getDepartments().then(setDepartments).catch(() => {})
     api.getReactionTypes().then(setReactionTypes).catch(() => {})
+  }, [])
+
+  useEffect(() => {
+    return () => stopTimer()
   }, [])
 
   const runMatch = useCallback(async () => {
@@ -37,8 +50,14 @@ export default function MatchPage() {
     setLoadError('')
     setEmptyMessage('')
     setSelectedMatch(null)
+    setElapsed(0)
+    stopTimer()
+    timerRef.current = setInterval(() => setElapsed(s => s + 1), 1000)
     try {
-      const result = await api.computeMyMatches()
+      const [result] = await Promise.all([
+        api.computeMyMatches(),
+        new Promise<void>(r => setTimeout(r, 10_000)),
+      ])
       setGroups(result.groups)
       setEmptyMessage(result.emptyMessage)
       const firstGroup = result.groups[0]
@@ -47,6 +66,7 @@ export default function MatchPage() {
       setLoadError(err instanceof Error ? err.message : 'Не удалось выполнить подбор')
     } finally {
       setLoading(false)
+      stopTimer()
     }
   }, [])
 
@@ -121,6 +141,7 @@ export default function MatchPage() {
           <DepartmentDonut
             segments={segments}
             loading={loading}
+            elapsedSeconds={elapsed}
             onSegmentClick={(segment) => {
               if (segment.count <= 0) return
               setSelectedDepartment(segment.label)
