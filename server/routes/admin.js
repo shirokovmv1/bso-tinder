@@ -4,6 +4,7 @@ const fs = require('fs')
 const path = require('path')
 const { v4: uuidv4 } = require('uuid')
 const rateLimit = require('express-rate-limit')
+const { TextDecoder } = require('util')
 const { verifyAdmin } = require('../middleware/adminAuth')
 const db = require('../db')
 const logger = require('../logger')
@@ -22,7 +23,9 @@ router.use(adminLimiter)
 // GET /api/admin/users
 router.get('/users', verifyAdmin, (req, res) => {
   const users = db.prepare(`
-    SELECT id, email, name, department, is_admin, is_banned, onboarding_done, created_at
+    SELECT id, email, name, last_name, first_name, middle_name, position,
+           department, birthday_day, birthday_month, is_admin, is_banned,
+           onboarding_done, created_at
     FROM users ORDER BY created_at DESC
   `).all()
   res.json(users)
@@ -89,6 +92,117 @@ router.put('/settings/smtp', verifyAdmin, (req, res) => {
 const MAGIC_LINK_TTL_MS = 30 * 24 * 60 * 60 * 1000 // 30 дней
 
 // ── Magic links / CSV ─────────────────────────────────────────────────────────
+
+const IMPORT_HEADERS = [
+  'email',
+  'last_name',
+  'first_name',
+  'middle_name',
+  'position',
+  'department',
+  'birthday_day',
+  'birthday_month',
+]
+
+function decodeCsvBody(body) {
+  if (typeof body?.csvBase64 === 'string' && body.csvBase64.trim()) {
+    const bytes = Buffer.from(body.csvBase64, 'base64')
+    if (!bytes.length) return ''
+
+    if (bytes[0] === 0xEF && bytes[1] === 0xBB && bytes[2] === 0xBF) {
+      return bytes.subarray(3).toString('utf8')
+    }
+
+    try {
+      return new TextDecoder('utf-8', { fatal: true }).decode(bytes)
+    } catch {
+      return new TextDecoder('windows-1251').decode(bytes)
+    }
+  }
+
+  return typeof body?.csv === 'string' ? body.csv : ''
+}
+
+function countDelimiter(line, delimiter) {
+  let count = 0
+  let quoted = false
+
+  for (let i = 0; i < line.length; i++) {
+    const ch = line[i]
+    const next = line[i + 1]
+    if (ch === '"' && quoted && next === '"') {
+      i++
+    } else if (ch === '"') {
+      quoted = !quoted
+    } else if (ch === delimiter && !quoted) {
+      count++
+    }
+  }
+
+  return count
+}
+
+function detectCsvDelimiter(headerLine) {
+  const semicolonCount = countDelimiter(headerLine, ';')
+  const commaCount = countDelimiter(headerLine, ',')
+  return semicolonCount > commaCount ? ';' : ','
+}
+
+function parseCsvLine(line, delimiter) {
+  const cells = []
+  let cell = ''
+  let quoted = false
+
+  for (let i = 0; i < line.length; i++) {
+    const ch = line[i]
+    const next = line[i + 1]
+    if (ch === '"' && quoted && next === '"') {
+      cell += '"'
+      i++
+    } else if (ch === '"') {
+      quoted = !quoted
+    } else if (ch === delimiter && !quoted) {
+      cells.push(cell)
+      cell = ''
+    } else {
+      cell += ch
+    }
+  }
+  cells.push(cell)
+  return cells.map(v => v.trim())
+}
+
+function parseCsv(text) {
+  const normalized = String(text || '').replace(/^\uFEFF/, '').replace(/\r\n/g, '\n').replace(/\r/g, '\n')
+  const lines = normalized.split('\n').filter(line => line.trim())
+  if (!lines.length) return { headers: [], rows: [] }
+
+  const delimiter = detectCsvDelimiter(lines[0])
+  const headers = parseCsvLine(lines[0], delimiter).map(header => header.trim().toLowerCase())
+  const rows = lines.slice(1).map((line, idx) => {
+    const values = parseCsvLine(line, delimiter)
+    const row = { __line: idx + 2 }
+    headers.forEach((header, i) => { row[header] = values[i] ?? '' })
+    return row
+  })
+  return { headers, rows }
+}
+
+function toNullableText(value) {
+  const trimmed = String(value ?? '').trim()
+  return trimmed || null
+}
+
+function parseBirthdayPart(value, min, max) {
+  if (value === undefined || value === null || String(value).trim() === '') return null
+  const n = Number(String(value).trim())
+  if (!Number.isInteger(n) || n < min || n > max) return undefined
+  return n
+}
+
+function buildFullName({ last_name, first_name, middle_name, email }) {
+  return [last_name, first_name, middle_name].map(toNullableText).filter(Boolean).join(' ') || email
+}
 
 router.get('/magic-link/:id', verifyAdmin, (req, res) => {
   const user = db.prepare('SELECT id, email FROM users WHERE id = ?').get(req.params.id)
@@ -163,6 +277,119 @@ router.get('/users/csv', verifyAdmin, (req, res) => {
   res.setHeader('Content-Type', 'text/csv; charset=utf-8')
   res.setHeader('Content-Disposition', 'attachment; filename="bso-users.csv"')
   res.send('﻿' + [header, ...rows].join('\n'))
+})
+
+router.post('/users/import-csv', verifyAdmin, (req, res) => {
+  const csv = decodeCsvBody(req.body)
+  if (typeof csv !== 'string' || !csv.trim()) {
+    return res.status(400).json({ error: 'CSV-файл пустой' })
+  }
+
+  const { headers, rows } = parseCsv(csv)
+  const missing = IMPORT_HEADERS.filter(h => !headers.includes(h))
+  if (missing.length) {
+    return res.status(400).json({ error: `Нет обязательных колонок: ${missing.join(', ')}` })
+  }
+
+  const activeDepartments = new Set(
+    db.prepare('SELECT name FROM departments WHERE is_active = 1').all().map(d => d.name)
+  )
+  const existingByEmail = db.prepare('SELECT id FROM users WHERE email = ?')
+  const insertUser = db.prepare(`
+    INSERT INTO users (
+      id, email, name, last_name, first_name, middle_name, position,
+      department, birthday_day, birthday_month, onboarding_done
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0)
+  `)
+  const updateUser = db.prepare(`
+    UPDATE users SET
+      name = ?,
+      last_name = ?,
+      first_name = ?,
+      middle_name = ?,
+      position = ?,
+      department = ?,
+      birthday_day = ?,
+      birthday_month = ?
+    WHERE id = ?
+  `)
+
+  const errors = []
+  let created = 0
+  let updated = 0
+
+  const runImport = db.transaction(() => {
+    for (const row of rows) {
+      const email = toNullableText(row.email)?.toLowerCase()
+      const department = toNullableText(row.department)
+      const firstName = toNullableText(row.first_name)
+      const lastName = toNullableText(row.last_name)
+      const birthdayDay = parseBirthdayPart(row.birthday_day, 1, 31)
+      const birthdayMonth = parseBirthdayPart(row.birthday_month, 1, 12)
+
+      if (!email || !email.includes('@')) {
+        errors.push({ line: row.__line, error: 'Некорректный email' })
+        continue
+      }
+      if (!firstName || !lastName) {
+        errors.push({ line: row.__line, error: 'Фамилия и имя обязательны' })
+        continue
+      }
+      if (!department || !activeDepartments.has(department)) {
+        errors.push({ line: row.__line, error: `Отдел не найден: ${department || 'пусто'}` })
+        continue
+      }
+      if (birthdayDay === undefined || birthdayMonth === undefined) {
+        errors.push({ line: row.__line, error: 'День рождения должен быть day 1..31 и month 1..12' })
+        continue
+      }
+
+      const payload = {
+        email,
+        last_name: lastName,
+        first_name: firstName,
+        middle_name: toNullableText(row.middle_name),
+        position: toNullableText(row.position),
+        department,
+        birthday_day: birthdayDay,
+        birthday_month: birthdayMonth,
+      }
+      const name = buildFullName(payload)
+      const existing = existingByEmail.get(email)
+      if (existing) {
+        updateUser.run(
+          name,
+          payload.last_name,
+          payload.first_name,
+          payload.middle_name,
+          payload.position,
+          payload.department,
+          payload.birthday_day,
+          payload.birthday_month,
+          existing.id
+        )
+        updated++
+      } else {
+        insertUser.run(
+          uuidv4(),
+          payload.email,
+          name,
+          payload.last_name,
+          payload.first_name,
+          payload.middle_name,
+          payload.position,
+          payload.department,
+          payload.birthday_day,
+          payload.birthday_month
+        )
+        created++
+      }
+    }
+  })
+
+  runImport()
+  logger.info('CSV import', { created, updated, errors: errors.length, by: req.user.id })
+  res.json({ success: true, created, updated, errors })
 })
 
 // ── Seed (dev only) ───────────────────────────────────────────────────────────

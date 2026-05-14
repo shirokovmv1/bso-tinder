@@ -11,6 +11,7 @@ const HOBBY_FIELDS = 'h.id, h.parent_id, h.label, h.emoji, h.sort_order, h.is_ac
 const MIN_NAME_LENGTH = 2
 const MAX_DEPARTMENT_LENGTH = 80
 const MAX_AVATAR_DATA_URL_LENGTH = 450000
+const MAX_TEXT_LENGTH = 1000
 
 function isValidAvatarValue(value) {
   if (typeof value !== 'string') return false
@@ -19,6 +20,24 @@ function isValidAvatarValue(value) {
   if (trimmed.startsWith('data:image/')) return trimmed.length <= MAX_AVATAR_DATA_URL_LENGTH
   if (trimmed.startsWith('http://') || trimmed.startsWith('https://')) return trimmed.length <= 2048
   return false
+}
+
+function cleanText(value) {
+  if (value === undefined) return undefined
+  if (value === null) return null
+  return String(value).trim()
+}
+
+function buildDisplayName({ name, last_name, first_name, middle_name, fallback }) {
+  const fullName = [last_name, first_name, middle_name]
+    .map(v => String(v ?? '').trim())
+    .filter(Boolean)
+    .join(' ')
+  return fullName || String(name ?? fallback ?? '').trim()
+}
+
+function isValidLongText(value) {
+  return value === undefined || value === null || (typeof value === 'string' && value.length <= MAX_TEXT_LENGTH)
 }
 
 const toggleReactionTx = db.transaction((fromUserId, toUserId, reactionTypeId) => {
@@ -95,8 +114,11 @@ function getReactionCounts(userIds) {
 // GET /api/users — список всех сотрудников (кроме забаненных)
 router.get('/', verifyJWT, (req, res) => {
   const users = db.prepare(`
-    SELECT id, email, name, department, avatar_url, badge_id,
-           gender, experience_months, pitch, badge_title, badge_emoji, badge_reason,
+    SELECT id, email, name, last_name, first_name, middle_name, position,
+           department, birthday_day, birthday_month, avatar_url, badge_id,
+           gender, experience_months, about_short, work_details, current_interests,
+           last_movies, last_books, last_songs, zodiac_sign, fav_color,
+           pitch, badge_title, badge_emoji, badge_reason,
            onboarding_done, created_at
     FROM users
     WHERE is_banned = 0 AND onboarding_done = 1 AND is_admin = 0
@@ -139,8 +161,11 @@ router.get('/hobbies/all', verifyJWT, (req, res) => {
 // GET /api/users/:id
 router.get('/:id', verifyJWT, (req, res) => {
   const user = db.prepare(`
-    SELECT id, email, name, department, avatar_url, badge_id,
-           gender, experience_months, pitch, badge_title, badge_emoji, badge_reason,
+    SELECT id, email, name, last_name, first_name, middle_name, position,
+           department, birthday_day, birthday_month, avatar_url, badge_id,
+           gender, experience_months, about_short, work_details, current_interests,
+           last_movies, last_books, last_songs, zodiac_sign, fav_color,
+           pitch, badge_title, badge_emoji, badge_reason,
            onboarding_done
     FROM users
     WHERE id = ? AND is_banned = 0
@@ -197,12 +222,50 @@ router.put('/:id', verifyJWT, async (req, res) => {
     hobbyIds,
     gender,
     experience_months,
+    last_name,
+    first_name,
+    middle_name,
+    position,
+    birthday_day,
+    birthday_month,
+    about_short,
+    work_details,
+    current_interests,
+    last_movies,
+    last_books,
+    last_songs,
+    zodiac_sign,
+    fav_color,
   } = req.body
   const normalizedAvatar = avatarUrl !== undefined ? avatarUrl : avatar_url
   const normalizedBadgeId = badgeId !== undefined ? badgeId : badge_id
 
-  if (name !== undefined) {
-    if (typeof name !== 'string' || name.trim().length < MIN_NAME_LENGTH) {
+  const nextText = {
+    name: cleanText(name),
+    last_name: cleanText(last_name),
+    first_name: cleanText(first_name),
+    middle_name: cleanText(middle_name),
+    position: cleanText(position),
+    about_short: cleanText(about_short),
+    work_details: cleanText(work_details),
+    current_interests: cleanText(current_interests),
+    last_movies: cleanText(last_movies),
+    last_books: cleanText(last_books),
+    last_songs: cleanText(last_songs),
+    zodiac_sign: cleanText(zodiac_sign),
+    fav_color: cleanText(fav_color),
+  }
+
+  const displayName = buildDisplayName({
+    name: nextText.name,
+    last_name: nextText.last_name,
+    first_name: nextText.first_name,
+    middle_name: nextText.middle_name,
+    fallback: undefined,
+  })
+
+  if (name !== undefined || first_name !== undefined || last_name !== undefined || middle_name !== undefined) {
+    if (!displayName || displayName.length < MIN_NAME_LENGTH) {
       return res.status(400).json({ error: `name должен быть строкой длиной не менее ${MIN_NAME_LENGTH} символов` })
     }
   }
@@ -214,27 +277,72 @@ router.put('/:id', verifyJWT, async (req, res) => {
   if (normalizedAvatar !== undefined && !isValidAvatarValue(normalizedAvatar)) {
     return res.status(400).json({ error: 'avatar_url должен быть data:image/* (до 300KB) или http/https URL' })
   }
+  if (![about_short, work_details, current_interests, last_movies, last_books, last_songs].every(isValidLongText)) {
+    return res.status(400).json({ error: `Текстовые поля анкеты должны быть не длиннее ${MAX_TEXT_LENGTH} символов` })
+  }
+  if ([zodiac_sign, fav_color].some(value => value !== undefined && value !== null && String(value).trim().length > 80)) {
+    return res.status(400).json({ error: 'zodiac_sign и fav_color должны быть не длиннее 80 символов' })
+  }
+  if (birthday_day !== undefined && birthday_day !== null && (!Number.isInteger(Number(birthday_day)) || Number(birthday_day) < 1 || Number(birthday_day) > 31)) {
+    return res.status(400).json({ error: 'birthday_day должен быть числом 1..31' })
+  }
+  if (birthday_month !== undefined && birthday_month !== null && (!Number.isInteger(Number(birthday_month)) || Number(birthday_month) < 1 || Number(birthday_month) > 12)) {
+    return res.status(400).json({ error: 'birthday_month должен быть числом 1..12' })
+  }
 
   if (name !== undefined || department !== undefined || normalizedAvatar !== undefined ||
-      normalizedBadgeId !== undefined || gender !== undefined || experience_months !== undefined) {
+      normalizedBadgeId !== undefined || gender !== undefined || experience_months !== undefined ||
+      last_name !== undefined || first_name !== undefined || middle_name !== undefined ||
+      position !== undefined || birthday_day !== undefined || birthday_month !== undefined ||
+      about_short !== undefined || work_details !== undefined || current_interests !== undefined ||
+      last_movies !== undefined || last_books !== undefined || last_songs !== undefined ||
+      zodiac_sign !== undefined || fav_color !== undefined) {
     db.prepare(`
       UPDATE users SET
         name               = COALESCE(?, name),
+        last_name          = COALESCE(?, last_name),
+        first_name         = COALESCE(?, first_name),
+        middle_name        = COALESCE(?, middle_name),
+        position           = COALESCE(?, position),
         department         = COALESCE(?, department),
+        birthday_day       = COALESCE(?, birthday_day),
+        birthday_month     = COALESCE(?, birthday_month),
         avatar_url         = COALESCE(?, avatar_url),
         badge_id           = COALESCE(?, badge_id),
         gender             = COALESCE(?, gender),
         experience_months  = COALESCE(?, experience_months),
+        about_short        = COALESCE(?, about_short),
+        work_details       = COALESCE(?, work_details),
+        current_interests  = COALESCE(?, current_interests),
+        last_movies        = COALESCE(?, last_movies),
+        last_books         = COALESCE(?, last_books),
+        last_songs         = COALESCE(?, last_songs),
+        zodiac_sign        = COALESCE(?, zodiac_sign),
+        fav_color          = COALESCE(?, fav_color),
         onboarding_done    = CASE WHEN ? IS NOT NULL AND ? IS NOT NULL THEN 1 ELSE onboarding_done END
       WHERE id = ?
     `).run(
-      name ?? null,
+      displayName || null,
+      nextText.last_name ?? null,
+      nextText.first_name ?? null,
+      nextText.middle_name ?? null,
+      nextText.position ?? null,
       department ?? null,
+      birthday_day !== undefined ? birthday_day : null,
+      birthday_month !== undefined ? birthday_month : null,
       normalizedAvatar ?? null,
       normalizedBadgeId ?? null,
       gender ?? null,
       experience_months !== undefined ? experience_months : null,
-      name ?? null, department ?? null,
+      nextText.about_short ?? null,
+      nextText.work_details ?? null,
+      nextText.current_interests ?? null,
+      nextText.last_movies ?? null,
+      nextText.last_books ?? null,
+      nextText.last_songs ?? null,
+      nextText.zodiac_sign ?? null,
+      nextText.fav_color ?? null,
+      displayName || null, department ?? null,
       req.user.id
     )
   }

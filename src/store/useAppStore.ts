@@ -18,7 +18,6 @@ interface AppState {
   // Лента
   employees: ApiUser[]
   searchQuery: string
-  departmentFilter: string
 
   // Мэтчинг
   matchCandidates: [ApiUser | null, ApiUser | null]
@@ -39,7 +38,6 @@ interface AppState {
   // Экшены — лента
   setEmployees: (list: ApiUser[]) => void
   setSearchQuery: (q: string) => void
-  setDepartmentFilter: (dept: string) => void
 
   // Экшены — мэтчинг
   setMatchCandidate: (slot: 0 | 1, user: ApiUser | null) => void
@@ -76,7 +74,6 @@ export const useAppStore = create<AppState>()(
 
       employees: [],
       searchQuery: '',
-      departmentFilter: 'Все',
 
       matchCandidates: [null, null],
       matchResult: null,
@@ -116,7 +113,6 @@ export const useAppStore = create<AppState>()(
       setCurrentUser: (user) => set({ currentUser: user, isAdmin: !!user.is_admin }),
       setEmployees: (list) => set({ employees: list }),
       setSearchQuery: (q) => set({ searchQuery: q }),
-      setDepartmentFilter: (dept) => set({ departmentFilter: dept }),
 
       setMatchCandidate: (slot, user) => {
         const next = [...get().matchCandidates] as [ApiUser | null, ApiUser | null]
@@ -143,8 +139,14 @@ export const useAppStore = create<AppState>()(
 
 export const selectFilteredEmployees = (s: AppState) =>
   s.employees.filter(e => {
-    const q = s.searchQuery.toLowerCase()
-    const matchSearch = !q || (e.name ?? '').toLowerCase().includes(q)
-    const matchDept = s.departmentFilter === 'Все' || e.department === s.departmentFilter
-    return matchSearch && matchDept
+    const q = s.searchQuery.trim().toLowerCase()
+    if (!q) return true
+
+    return [
+      e.name,
+      e.last_name,
+      e.first_name,
+      e.middle_name,
+      e.position,
+    ].some(value => String(value ?? '').toLowerCase().includes(q))
   })

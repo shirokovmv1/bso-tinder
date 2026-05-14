@@ -1,280 +1,280 @@
-import { useEffect, useRef, useState } from 'react'
-import { motion, animate } from 'framer-motion'
-import { api, type ApiUser } from '@/api/client'
-import { useAppStore } from '@/store/useAppStore'
+import { useCallback, useEffect, useMemo, useState } from 'react'
+import { Link } from 'react-router-dom'
+import { AnimatePresence, motion } from 'framer-motion'
+import { api, type ApiDepartment, type ApiDepartmentMatchGroup, type ApiMatchedUser, type ApiReactionType } from '@/api/client'
 import BottomNav from '@/components/ui/BottomNav'
+import DepartmentDonut, { type DonutSegment } from '@/components/match/DepartmentDonut'
 
-const TONES = [
-  'linear-gradient(135deg,#FF8A33,#FF6B00)',
-  'linear-gradient(135deg,#5b6cff,#3a4be0)',
-  'linear-gradient(135deg,#34D399,#0EA371)',
-  'linear-gradient(135deg,#B388FF,#7C4DFF)',
-  'linear-gradient(135deg,#FF8FAB,#E94B7C)',
-]
-const toneFor = (id: string) => TONES[id.charCodeAt(0) % TONES.length]
+const COLORS = ['#F59E7A', '#8EA4FF', '#6ED7B7', '#C4A7FF', '#F4A7C3', '#F2C879', '#7DD3C7', '#FCA5A5']
 
-// Градация по score + гендерные статусы для 90–100%
-function getMatchInfo(score: number, genderA?: string, genderB?: string) {
-  if (score >= 90) {
-    let special: string
-    const g1 = genderA ?? ''
-    const g2 = genderB ?? ''
-    if (g1 === 'm' && g2 === 'm')       special = 'Братья по духу!'
-    else if (g1 === 'f' && g2 === 'f')  special = 'Сёстры!'
-    else if ((g1 === 'm' && g2 === 'f') || (g1 === 'f' && g2 === 'm'))
-                                         special = 'Идеальная пара!'
-    else                                 special = '100% Совпадение!'
-    return { label: special, sublabel: 'Высший уровень совместимости', color: '#FF3D00' }
-  }
-  if (score >= 70) return { label: 'Почти идеал!',           sublabel: 'Очень высокая совместимость', color: '#FF6B00' }
-  if (score >= 50) return { label: 'Отличная совместимость', sublabel: 'Много общего',                color: '#FF8C00' }
-  return              { label: 'Хорошее начало',             sublabel: 'Есть о чём поговорить',       color: '#F0A500' }
+function colorFor(index: number) {
+  return COLORS[index % COLORS.length]
+}
+
+function initials(name?: string | null) {
+  return (name || '?').trim()[0]?.toUpperCase() || '?'
 }
 
 export default function MatchPage() {
   const appEnv = import.meta.env.VITE_APP_ENV ?? 'prod'
-  const { matchCandidates, matchResult, setMatchCandidate, setMatchResult, clearMatch } = useAppStore()
-  const [employees, setEmployees] = useState<ApiUser[]>([])
-  const [pickerSlot, setPickerSlot] = useState<0 | 1 | null>(null)
+  const [departments, setDepartments] = useState<ApiDepartment[]>([])
+  const [groups, setGroups] = useState<ApiDepartmentMatchGroup[]>([])
+  const [selectedDepartment, setSelectedDepartment] = useState<string | null>(null)
+  const [selectedMatch, setSelectedMatch] = useState<ApiMatchedUser | null>(null)
+  const [reactionTypes, setReactionTypes] = useState<ApiReactionType[]>([])
   const [loading, setLoading] = useState(false)
   const [loadError, setLoadError] = useState('')
-  const [matchError, setMatchError] = useState('')
-
-  const [a, b] = matchCandidates
+  const [emptyMessage, setEmptyMessage] = useState('')
+  const [pendingReaction, setPendingReaction] = useState<string | null>(null)
 
   useEffect(() => {
-    setLoadError('')
-    api.getUsers()
-      .then(setEmployees)
-      .catch((err) => setLoadError(err instanceof Error ? err.message : 'Не удалось загрузить сотрудников'))
+    api.getDepartments().then(setDepartments).catch(() => {})
+    api.getReactionTypes().then(setReactionTypes).catch(() => {})
   }, [])
 
-  useEffect(() => {
-    if (a && b && !matchResult) {
-      setLoading(true)
-      setMatchError('')
-      api.computeMatch(a.id, b.id)
-        .then(setMatchResult)
-        .catch((err) => setMatchError(err instanceof Error ? err.message : 'Не удалось посчитать совместимость'))
-        .finally(() => setLoading(false))
+  const runMatch = useCallback(async () => {
+    setLoading(true)
+    setLoadError('')
+    setEmptyMessage('')
+    setSelectedMatch(null)
+    try {
+      const result = await api.computeMyMatches()
+      setGroups(result.groups)
+      setEmptyMessage(result.emptyMessage)
+      const firstGroup = result.groups[0]
+      setSelectedDepartment(firstGroup?.department ?? null)
+    } catch (err) {
+      setLoadError(err instanceof Error ? err.message : 'Не удалось выполнить подбор')
+    } finally {
+      setLoading(false)
     }
-  }, [a, b, matchResult, setMatchResult])
+  }, [])
+
+  const segments = useMemo<DonutSegment[]>(() => {
+    const counts = new Map(groups.map(group => [group.department, group.count]))
+    const source = departments.length
+      ? departments
+      : groups.map((group, i) => ({ id: group.department, name: group.department, sort_order: i, is_active: 1 }))
+
+    return source.map((dept, index) => ({
+      id: dept.id || dept.name,
+      label: dept.name,
+      count: counts.get(dept.name) ?? 0,
+      color: colorFor(index),
+    }))
+  }, [departments, groups])
+
+  const activeGroup = useMemo(
+    () => groups.find(group => group.department === selectedDepartment) ?? null,
+    [groups, selectedDepartment]
+  )
+
+  async function handleReaction(match: ApiMatchedUser, reactionTypeId: string) {
+    const key = `${match.user.id}:${reactionTypeId}`
+    if (pendingReaction) return
+    setPendingReaction(key)
+    try {
+      await api.sendReaction(match.user.id, reactionTypeId)
+    } finally {
+      setPendingReaction(null)
+    }
+  }
 
   return (
     <div className="min-h-full flex flex-col bg-radial-orange overflow-y-auto scrollbar-none pb-28">
-      <div className="mx-auto w-full max-w-md px-5 pt-14 flex-1">
-        <h1 className="text-[34px] font-black leading-[1.05] tracking-tight mb-2 fade-up">
-          {matchResult ? <>Вы — <span className="text-orange-500">команда</span></> : 'Найти совпадение'}
-        </h1>
-        <div className={`inline-flex mb-3 px-2 py-1 rounded-full text-[9px] font-black uppercase tracking-[0.08em] border ${
-          appEnv === 'test'
-            ? 'text-yellow-300 border-yellow-300/50 bg-yellow-500/10'
-            : 'text-emerald-300 border-emerald-300/50 bg-emerald-500/10'
-        }`}>{appEnv}</div>
-        <p className="text-white/55 text-[15px] font-medium mb-8 fade-up" style={{ animationDelay: '60ms' }}>
-          {matchResult ? 'Посмотрите, что вас объединяет' : 'Выберите двух коллег для сравнения'}
-        </p>
+      <div className="mx-auto w-full max-w-[460px] px-3 pt-8 flex-1">
+        <header className="text-center mb-4 fade-up">
+          <div className="mx-auto mb-2 h-[52px] w-[52px] rounded-2xl bg-orange-500 flex items-center justify-center shadow-cta">
+            <span className="text-white font-black text-[18px] tracking-tight">БСО</span>
+          </div>
+          <h1 className="text-[28px] font-black leading-[1.05] tracking-tight">Своя команда</h1>
+          <p className="mt-1.5 text-[10px] font-black uppercase tracking-[0.16em] text-white/55">строим команду</p>
+          <div className={`inline-flex mt-2 px-2 py-1 rounded-full text-[9px] font-black uppercase tracking-[0.08em] border ${
+            appEnv === 'test'
+              ? 'text-yellow-300 border-yellow-300/50 bg-yellow-500/10'
+              : 'text-emerald-300 border-emerald-300/50 bg-emerald-500/10'
+          }`}>{appEnv}</div>
+        </header>
 
         {!!loadError && (
           <div className="glass-1 rounded-2xl p-4 border border-red-400/30 mb-5">
             <p className="text-[13px] font-bold text-red-300 mb-3">{loadError}</p>
-            <button
-              onClick={() => api.getUsers().then(setEmployees).catch(() => {})}
-              className="px-3 py-2 rounded-full text-[12px] font-bold bg-orange-500/20 border border-orange-500/40 text-orange-300"
-            >
+            <button onClick={runMatch} className="px-3 py-2 rounded-full text-[12px] font-bold bg-orange-500/20 border border-orange-500/40 text-orange-300">
               Попробовать снова
             </button>
           </div>
         )}
 
-        {/* Слоты */}
-        <div className="relative flex items-center justify-between gap-3 mb-8 fade-up" style={{ animationDelay: '120ms' }}>
-          <SlotCard user={a} onPick={() => setPickerSlot(0)} onClear={() => { setMatchCandidate(0, null); setMatchResult(null) }} />
-
-          {matchResult ? (
-            <motion.div initial={{ scale: 0 }} animate={{ scale: 1 }} transition={{ type: 'spring', delay: 0.3 }}
-              className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 z-10">
-              <CompatRing score={matchResult.score} genderA={a?.gender} genderB={b?.gender} />
-            </motion.div>
-          ) : (
-            <div className="w-10 h-10 rounded-full glass-1 grid place-items-center shrink-0">
-              <span className="text-white/40 font-black text-[18px]">+</span>
-            </div>
-          )}
-
-          <SlotCard user={b} onPick={() => setPickerSlot(1)} onClear={() => { setMatchCandidate(1, null); setMatchResult(null) }} />
+        <div className="fade-up flex justify-center" style={{ animationDelay: '80ms' }}>
+          <button
+            type="button"
+            onClick={runMatch}
+            disabled={loading}
+            className="match-cta-btn"
+            aria-label="Запустить подбор"
+          >
+            {loading ? 'Ищем' : 'Метч'}
+          </button>
         </div>
 
+        <div className="fade-up mt-4" style={{ animationDelay: '120ms' }}>
+          <DepartmentDonut
+            segments={segments}
+            loading={loading}
+            onSegmentClick={(segment) => {
+              if (segment.count <= 0) return
+              setSelectedDepartment(segment.label)
+              setSelectedMatch(null)
+            }}
+          />
+        </div>
+
+        {!groups.length && !loading && !emptyMessage && (
+          <p className="mt-5 text-center text-[13px] font-semibold text-white/45">
+            Нажмите MATCH, чтобы найти коллег с общими интересами.
+          </p>
+        )}
+
         {loading && (
-          <div className="flex items-center justify-center py-12">
-            <div className="w-8 h-8 border-2 border-orange-500/30 border-t-orange-500 rounded-full animate-spin" />
+          <p className="mt-5 text-center text-[13px] font-bold text-orange-200">
+            Подбор начинается заново с учётом вашей анкеты...
+          </p>
+        )}
+
+        {!!emptyMessage && (
+          <div className="mt-5 glass-1 rounded-2xl p-4 text-center">
+            <p className="text-[14px] font-bold text-white/70">{emptyMessage}</p>
+            <p className="mt-2 text-[13px] font-semibold text-white/50">
+              Попробуйте расширить интересы, чтобы подбор стал точнее.
+            </p>
+            <Link
+              to="/onboarding?step=interests"
+              className="mt-3 inline-flex items-center justify-center rounded-full bg-orange-500 px-4 py-2 text-[13px] font-black text-white shadow-cta"
+            >
+              Расширить интересы
+            </Link>
           </div>
         )}
-        {!!matchError && (
-          <div className="glass-1 rounded-2xl p-4 border border-red-400/30 mb-5">
-            <p className="text-[13px] font-bold text-red-300">{matchError}</p>
-          </div>
-        )}
 
-        {matchResult && (
-          <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.5 }} className="space-y-5">
-            {/* Статус совместимости */}
-            {(() => {
-              const info = getMatchInfo(matchResult.score, a?.gender, b?.gender)
-              return (
-                <motion.div
-                  initial={{ opacity: 0, scale: 0.9 }}
-                  animate={{ opacity: 1, scale: 1 }}
-                  transition={{ delay: 0.7, type: 'spring', damping: 16 }}
-                  className="text-center"
-                >
-                  <div className="text-[26px] font-black tracking-tight" style={{ color: info.color }}>
-                    {info.label}
-                  </div>
-                  <div className="text-[13px] font-semibold text-white/50 mt-0.5">{info.sublabel}</div>
-                </motion.div>
-              )
-            })()}
+        <AnimatePresence mode="wait">
+          {activeGroup && (
+            <motion.section
+              key={activeGroup.department}
+              initial={{ opacity: 0, y: 16 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -10 }}
+              className="mt-6 space-y-3"
+            >
+              <div>
+                <div className="text-[10px] font-black uppercase tracking-[0.14em] text-white/45">Отдел</div>
+                <h2 className="text-[22px] font-black leading-tight tracking-tight break-words">{activeGroup.department}</h2>
+              </div>
 
-            {/* Имена */}
-            <div className="flex justify-between px-2">
-              <div className="text-center w-[120px]">
-                <div className="font-extrabold text-[15px] leading-tight truncate">{a?.name}</div>
-                <div className="text-[10px] font-bold uppercase tracking-[0.08em] text-white/50 mt-0.5">{a?.department}</div>
-              </div>
-              <div className="text-center w-[120px]">
-                <div className="font-extrabold text-[15px] leading-tight truncate">{b?.name}</div>
-                <div className="text-[10px] font-bold uppercase tracking-[0.08em] text-white/50 mt-0.5">{b?.department}</div>
-              </div>
-            </div>
-
-            {/* Общие теги */}
-            <div>
-              <div className="text-[10px] font-black uppercase tracking-[0.12em] text-white/55 mb-2">
-                {matchResult.sharedHobbies.length > 0
-                  ? `${matchResult.sharedHobbies.length} общих интересов`
-                  : 'нет общих интересов — но это шанс'}
-              </div>
-              <div className="flex flex-wrap gap-2">
-                {matchResult.sharedHobbies.map(h => (
-                  <span key={h.id} className="text-[13px] font-bold bg-orange-500/15 border border-orange-500/40 text-orange-300 px-3 py-1.5 rounded-full">
-                    <span className="mr-1">{h.emoji}</span>{h.label}
-                  </span>
-                ))}
-                {!matchResult.sharedHobbies.length && (
-                  <span className="text-[13px] font-bold glass-1 text-white/70 px-3 py-1.5 rounded-full">противоположности притягиваются</span>
-                )}
-              </div>
-            </div>
-
-            {/* Icebreaker */}
-            <div className="glass-3 rounded-2xl p-5 shadow-card relative overflow-hidden">
-              <div className="absolute -right-12 -top-12 w-40 h-40 rounded-full"
-                style={{ background: 'radial-gradient(circle, rgba(255,107,0,.4), transparent 70%)' }} />
-              <div className="relative">
-                <div className="text-[10px] font-black uppercase tracking-[0.16em] text-orange-500 mb-2 flex items-center gap-1.5">
-                  <span>🔥</span><span>Айсбрейкер</span>
-                </div>
-                <div className="font-extrabold text-[18px] leading-snug">{matchResult.icebreaker}</div>
-                <div className="text-[11px] font-semibold text-white/40 mt-3">на основе ваших общих интересов</div>
-              </div>
-            </div>
-
-            {/* Reset */}
-            <button onClick={clearMatch}
-              className="w-full py-4 glass-1 rounded-2xl text-[15px] font-extrabold text-white/70 press-shrink ease-spring transition">
-              Попробовать другую пару
-            </button>
-          </motion.div>
-        )}
+              {activeGroup.matches.map(match => (
+                <MatchCard
+                  key={match.user.id}
+                  match={match}
+                  selected={selectedMatch?.user.id === match.user.id}
+                  reactionTypes={reactionTypes}
+                  pendingReaction={pendingReaction}
+                  onSelect={() => setSelectedMatch(prev => prev?.user.id === match.user.id ? null : match)}
+                  onReact={(reactionTypeId) => handleReaction(match, reactionTypeId)}
+                />
+              ))}
+            </motion.section>
+          )}
+        </AnimatePresence>
       </div>
 
       <BottomNav />
+    </div>
+  )
+}
 
-      {/* Picker modal */}
-      {pickerSlot !== null && (
-        <div className="fixed inset-0 z-50 bg-black/70 flex items-end" onClick={() => setPickerSlot(null)}>
+function MatchCard({ match, selected, reactionTypes, pendingReaction, onSelect, onReact }: {
+  match: ApiMatchedUser
+  selected: boolean
+  reactionTypes: ApiReactionType[]
+  pendingReaction: string | null
+  onSelect: () => void
+  onReact: (reactionTypeId: string) => void
+}) {
+  return (
+    <div className="glass-1 rounded-2xl p-4 shadow-card">
+      <button onClick={onSelect} className="w-full flex items-center gap-3 text-left">
+        <div className="w-12 h-12 rounded-full grid place-items-center text-white font-black text-[18px] shrink-0 border border-white/15"
+          style={{ background: 'linear-gradient(135deg,#FF8A33,#FF6B00)' }}>
+          {match.user.avatar_url
+            ? <img src={match.user.avatar_url} alt="" className="w-full h-full rounded-full object-cover" />
+            : initials(match.user.name)}
+        </div>
+        <div className="flex-1 min-w-0">
+          <div className="font-black text-[16px] truncate">{match.user.name}</div>
+          <div className="text-[11px] font-bold uppercase tracking-[0.08em] text-white/50 truncate">
+            {[match.user.department, match.user.position].filter(Boolean).join(' · ')}
+          </div>
+          <div className="mt-1 flex items-center gap-2">
+            <span className="text-[12px] font-black text-orange-300">{match.score}%</span>
+            <span className="text-[12px] font-bold text-white/55">{match.level.label}</span>
+          </div>
+        </div>
+        <span className="text-white/30 text-2xl font-black shrink-0">{selected ? '⌃' : '›'}</span>
+      </button>
+
+      <div className="mt-3 text-[13px] font-semibold text-white/65 leading-relaxed">
+        {match.pitch}
+      </div>
+
+      <div className="mt-3 flex flex-wrap gap-2">
+        {match.sharedHobbies.slice(0, 6).map(hobby => (
+          <span key={hobby.id} className="px-2.5 py-1 rounded-full text-[12px] font-bold bg-orange-500/15 border border-orange-500/30 text-orange-200">
+            <span className="mr-1">{hobby.emoji}</span>{hobby.label}
+          </span>
+        ))}
+      </div>
+
+      <AnimatePresence>
+        {selected && (
           <motion.div
-            initial={{ y: '100%' }} animate={{ y: 0 }} exit={{ y: '100%' }}
-            transition={{ type: 'spring', damping: 28, stiffness: 300 }}
-            className="w-full glass-3 rounded-t-[32px] p-6 pb-10 max-h-[75vh] overflow-y-auto scrollbar-none"
-            onClick={e => e.stopPropagation()}
+            initial={{ opacity: 0, height: 0 }}
+            animate={{ opacity: 1, height: 'auto' }}
+            exit={{ opacity: 0, height: 0 }}
+            className="overflow-hidden"
           >
-            <div className="w-12 h-1 bg-white/20 rounded-full mx-auto mb-5" />
-            <p className="text-[11px] font-black uppercase tracking-[0.12em] text-white/50 mb-4">Выберите сотрудника</p>
-            <div className="space-y-2">
-              {employees.filter(e => e.id !== matchCandidates[pickerSlot === 0 ? 1 : 0]?.id).map(e => (
-                <button key={e.id} onClick={() => { setMatchCandidate(pickerSlot, e); setPickerSlot(null) }}
-                  className="w-full flex items-center gap-3 glass-1 rounded-2xl p-3 press-shrink ease-spring transition hover:bg-white/10">
-                  <div className="w-10 h-10 rounded-full grid place-items-center text-white font-black text-[16px] shrink-0"
-                    style={{ background: toneFor(e.id) }}>
-                    {(e.name ?? '?')[0]}
+            <div className="pt-4 mt-4 border-t border-white/10">
+              {!!match.user.badge_title && (
+                <div className="mb-3 rounded-xl px-3 py-2 bg-white/5 border border-white/10">
+                  <div className="text-[10px] font-black uppercase tracking-[0.12em] text-white/40">Бейдж</div>
+                  <div className="text-[14px] font-bold text-white/80">
+                    <span className="mr-1">{match.user.badge_emoji}</span>{match.user.badge_title}
                   </div>
-                  <div className="text-left min-w-0">
-                    <div className="font-bold text-[15px] truncate">{e.name}</div>
-                    <div className="text-[11px] font-bold text-white/50 uppercase tracking-wider">{e.department}</div>
-                  </div>
-                </button>
-              ))}
+                </div>
+              )}
+
+              <div className="text-[10px] font-black uppercase tracking-[0.12em] text-white/40 mb-2">
+                Отметить анкету
+              </div>
+              <div className="flex gap-2 flex-wrap">
+                {reactionTypes.map(rt => {
+                  const key = `${match.user.id}:${rt.id}`
+                  const isPending = pendingReaction === key
+                  return (
+                    <button
+                      key={rt.id}
+                      disabled={isPending}
+                      onClick={() => onReact(rt.id)}
+                      className="flex items-center gap-1.5 px-3 py-2 rounded-full text-sm font-bold transition-all border glass-1 border-white/10 text-white/75 hover:bg-white/10 disabled:opacity-60"
+                    >
+                      <span>{rt.emoji}</span>
+                      <span className="text-[12px]">{isPending ? '...' : rt.label}</span>
+                    </button>
+                  )
+                })}
+              </div>
             </div>
           </motion.div>
-        </div>
-      )}
-    </div>
-  )
-}
-
-function SlotCard({ user, onPick, onClear }: { user: ApiUser | null; onPick: () => void; onClear: () => void }) {
-  return (
-    <div className="flex-1">
-      {user ? (
-        <div className="glass-2 rounded-2xl p-3 flex flex-col items-center gap-2 relative">
-          <button onClick={onClear} className="absolute top-2 right-2 w-5 h-5 rounded-full bg-white/10 text-white/50 text-[11px] font-black grid place-items-center">✕</button>
-          <div className="w-16 h-16 rounded-full grid place-items-center text-white font-black text-[26px] border border-white/20"
-            style={{ background: toneFor(user.id) }}>
-            {(user.name ?? '?')[0]}
-          </div>
-          <div className="text-center">
-            <div className="font-bold text-[13px] leading-tight">{user.name}</div>
-            <div className="text-[10px] font-bold text-white/50 uppercase tracking-wider mt-0.5">{user.department}</div>
-          </div>
-        </div>
-      ) : (
-        <button onClick={onPick}
-          className="w-full glass-1 rounded-2xl p-3 flex flex-col items-center gap-2 press-shrink ease-spring transition hover:bg-white/10 border-2 border-dashed border-white/20">
-          <div className="w-16 h-16 rounded-full glass-1 grid place-items-center">
-            <span className="text-orange-500 text-3xl font-black">+</span>
-          </div>
-          <span className="text-[13px] font-bold text-white/50">Выбрать</span>
-        </button>
-      )}
-    </div>
-  )
-}
-
-function CompatRing({ score, genderA, genderB }: { score: number; genderA?: string; genderB?: string }) {
-  const R = 54; const C = 2 * Math.PI * R
-  const ref = useRef<SVGCircleElement>(null)
-  const { color } = getMatchInfo(score, genderA, genderB)
-
-  useEffect(() => {
-    if (!ref.current) return
-    const target = C * (1 - score / 100)
-    animate(C, target, { duration: 1.4, ease: 'easeOut', onUpdate: v => { if (ref.current) ref.current.style.strokeDashoffset = String(v) } })
-  }, [score, C])
-
-  return (
-    <div className="relative w-[140px] h-[140px]">
-      <svg width="140" height="140" viewBox="0 0 140 140" style={{ transform: 'rotate(-90deg)' }}>
-        <circle cx="70" cy="70" r={R} fill="rgba(26,26,26,0.88)" stroke="rgba(255,255,255,0.10)" strokeWidth="1"/>
-        <circle cx="70" cy="70" r={R} fill="none" stroke="rgba(255,255,255,0.08)" strokeWidth="9"/>
-        <circle ref={ref} cx="70" cy="70" r={R} fill="none" stroke={color} strokeWidth="9"
-          strokeLinecap="round" strokeDasharray={C} strokeDashoffset={C} />
-      </svg>
-      <div className="absolute inset-0 flex flex-col items-center justify-center">
-        <span className="text-[34px] font-black tracking-tight leading-none" style={{ color }}>{score}%</span>
-        <span className="text-[9px] font-black uppercase tracking-[0.12em] text-white/55 mt-0.5">совпадение</span>
-      </div>
+        )}
+      </AnimatePresence>
     </div>
   )
 }

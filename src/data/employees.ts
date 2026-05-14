@@ -30,7 +30,7 @@ export const EMPLOYEES: Employee[] = [
   {
     id: 'e4', name: 'Екатерина Лебедева', department: 'Финансы',
     avatar: avatar('Екатерина Лебедева'),
-    hobbies: [h('photo'), h('travel'), h('drawing'), h('movies'), h('cooking')],
+    hobbies: [h('photovideo'), h('travel'), h('design'), h('movies'), h('cooking')],
     badge: b('romantic'),
   },
   {
@@ -48,13 +48,13 @@ export const EMPLOYEES: Employee[] = [
   {
     id: 'e7', name: 'Никита Морозов', department: 'IT',
     avatar: avatar('Никита Морозов'),
-    hobbies: [h('coding'), h('smarthome'), h('printing'), h('podcasts'), h('gaming')],
+    hobbies: [h('coding'), h('gadgets'), h('printing'), h('podcasts'), h('gaming')],
     badge: b('eco_hacker'),
   },
   {
     id: 'e8', name: 'Анна Козлова', department: 'Финансы',
     avatar: avatar('Анна Козлова'),
-    hobbies: [h('yoga'), h('swimming'), h('drawing'), h('music'), h('garden')],
+    hobbies: [h('yoga'), h('swimming'), h('design'), h('music'), h('garden')],
     badge: b('romantic'),
   },
   {
@@ -66,7 +66,7 @@ export const EMPLOYEES: Employee[] = [
   {
     id: 'e10', name: 'Юлия Смирнова', department: 'Логистика',
     avatar: avatar('Юлия Смирнова'),
-    hobbies: [h('travel'), h('movies'), h('streetfood'), h('parties'), h('photo')],
+    hobbies: [h('travel'), h('movies'), h('streetfood'), h('parties'), h('photovideo')],
     badge: b('explorer'),
   },
   {
@@ -102,7 +102,7 @@ export const EMPLOYEES: Employee[] = [
   {
     id: 'e16', name: 'Виктория Белова', department: 'IT',
     avatar: avatar('Виктория Белова'),
-    hobbies: [h('photo'), h('drawing'), h('music'), h('travel'), h('coding')],
+    hobbies: [h('photovideo'), h('design'), h('music'), h('travel'), h('coding')],
     badge: b('digital_artist'),
   },
   {
@@ -120,7 +120,7 @@ export const EMPLOYEES: Employee[] = [
   {
     id: 'e19', name: 'Константин Яковлев', department: 'Финансы',
     avatar: avatar('Константин Яковлев'),
-    hobbies: [h('smarthome'), h('podcasts'), h('boardgames'), h('garden'), h('fishing')],
+    hobbies: [h('gadgets'), h('podcasts'), h('boardgames'), h('garden'), h('fishing')],
     badge: b('allrounder'),
   },
   {

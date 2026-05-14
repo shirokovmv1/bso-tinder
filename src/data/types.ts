@@ -1,4 +1,4 @@
-export type HobbyCategory = 'sport' | 'creative' | 'tech' | 'nature' | 'social'
+export type HobbyCategory = 'sport' | 'culture' | 'home' | 'nature' | 'games' | 'tech'
 
 export type Department = 'Логистика' | 'Стройка' | 'IT' | 'Финансы' | 'HR'
 

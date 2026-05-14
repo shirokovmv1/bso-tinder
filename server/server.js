@@ -64,7 +64,7 @@ app.get('/api/departments', (_req, res) => {
 app.get('/api/health', (_req, res) => {
   try {
     db.prepare('SELECT 1').get()
-    res.json({ status: 'ok', db: 'ok', env: NODE_ENV })
+    res.json({ status: 'ok', db: 'ok', env: APP_ENV, nodeEnv: NODE_ENV })
   } catch (err) {
     logger.error('Health check DB error', { error: err.message })
     res.status(503).json({ status: 'degraded', db: 'error', error: err.message })

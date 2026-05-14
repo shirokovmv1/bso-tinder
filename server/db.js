@@ -56,6 +56,13 @@ db.exec(`
   );
 `)
 
+db.exec(`
+  CREATE TABLE IF NOT EXISTS kv_meta (
+    key   TEXT PRIMARY KEY,
+    value TEXT NOT NULL
+  );
+`)
+
 function ensureMatchesCascadeMigration() {
   const hasMatchesTable = db.prepare(
     "SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'matches'"
@@ -107,6 +114,20 @@ const userCols = db.pragma('table_info(users)').map(c => c.name)
 const newUserCols = [
   ['gender',            'ALTER TABLE users ADD COLUMN gender TEXT'],
   ['experience_months', 'ALTER TABLE users ADD COLUMN experience_months INTEGER'],
+  ['last_name',         'ALTER TABLE users ADD COLUMN last_name TEXT'],
+  ['first_name',        'ALTER TABLE users ADD COLUMN first_name TEXT'],
+  ['middle_name',       'ALTER TABLE users ADD COLUMN middle_name TEXT'],
+  ['position',          'ALTER TABLE users ADD COLUMN position TEXT'],
+  ['birthday_day',      'ALTER TABLE users ADD COLUMN birthday_day INTEGER'],
+  ['birthday_month',    'ALTER TABLE users ADD COLUMN birthday_month INTEGER'],
+  ['about_short',       'ALTER TABLE users ADD COLUMN about_short TEXT'],
+  ['work_details',      'ALTER TABLE users ADD COLUMN work_details TEXT'],
+  ['current_interests', 'ALTER TABLE users ADD COLUMN current_interests TEXT'],
+  ['last_movies',       'ALTER TABLE users ADD COLUMN last_movies TEXT'],
+  ['last_books',        'ALTER TABLE users ADD COLUMN last_books TEXT'],
+  ['last_songs',        'ALTER TABLE users ADD COLUMN last_songs TEXT'],
+  ['zodiac_sign',       'ALTER TABLE users ADD COLUMN zodiac_sign TEXT'],
+  ['fav_color',         'ALTER TABLE users ADD COLUMN fav_color TEXT'],
   ['pitch',             'ALTER TABLE users ADD COLUMN pitch TEXT'],
   ['badge_title',       'ALTER TABLE users ADD COLUMN badge_title TEXT'],
   ['badge_emoji',       'ALTER TABLE users ADD COLUMN badge_emoji TEXT'],
@@ -220,67 +241,130 @@ db.exec(`
   );
 `)
 
+// ── Справочник интересов v2 ──────────────────────────────────────────────────
+
+const PARENT_CATS_V2 = [
+  { id: 'cat_sport',   label: 'Спорт и активность',      emoji: '⚽', sort_order: 0 },
+  { id: 'cat_culture', label: 'Культура и впечатления',  emoji: '🎬', sort_order: 1 },
+  { id: 'cat_home',    label: 'Дом, еда и быт',          emoji: '🏡', sort_order: 2 },
+  { id: 'cat_nature',  label: 'Природа и поездки',       emoji: '🌿', sort_order: 3 },
+  { id: 'cat_games',   label: 'Игры и общение',          emoji: '🎲', sort_order: 4 },
+  { id: 'cat_tech',    label: 'Технологии и навыки',     emoji: '💻', sort_order: 5 },
+]
+
+const HOBBIES_V2 = [
+  // cat_sport
+  { id: 'gym',         label: 'Зал / фитнес',           emoji: '🏋️', cat: 'cat_sport',   sort_order: 0 },
+  { id: 'football',    label: 'Футбол',                  emoji: '⚽',  cat: 'cat_sport',   sort_order: 1 },
+  { id: 'volleyball',  label: 'Волейбол',                emoji: '🏐',  cat: 'cat_sport',   sort_order: 2 },
+  { id: 'running',     label: 'Бег',                     emoji: '🏃',  cat: 'cat_sport',   sort_order: 3 },
+  { id: 'cycling',     label: 'Велосипед',               emoji: '🚴',  cat: 'cat_sport',   sort_order: 4 },
+  { id: 'swimming',    label: 'Плавание',                emoji: '🏊',  cat: 'cat_sport',   sort_order: 5 },
+  { id: 'yoga',        label: 'Йога / растяжка',        emoji: '🧘',  cat: 'cat_sport',   sort_order: 6 },
+  { id: 'walks',       label: 'Прогулки',                emoji: '🚶',  cat: 'cat_sport',   sort_order: 7 },
+  { id: 'dancing',     label: 'Танцы',                   emoji: '💃',  cat: 'cat_sport',   sort_order: 8 },
+  { id: 'tabletennis', label: 'Настольный теннис',       emoji: '🏓',  cat: 'cat_sport',   sort_order: 9 },
+  { id: 'padel',       label: 'Падл',                    emoji: '🎾',  cat: 'cat_sport',   sort_order: 10 },
+  // cat_culture
+  { id: 'movies',      label: 'Кино',                    emoji: '🎬',  cat: 'cat_culture', sort_order: 0 },
+  { id: 'series',      label: 'Сериалы',                 emoji: '📺',  cat: 'cat_culture', sort_order: 1 },
+  { id: 'music',       label: 'Музыка',                  emoji: '🎸',  cat: 'cat_culture', sort_order: 2 },
+  { id: 'concerts',    label: 'Концерты',                emoji: '🎤',  cat: 'cat_culture', sort_order: 3 },
+  { id: 'theater',     label: 'Театр',                   emoji: '🎭',  cat: 'cat_culture', sort_order: 4 },
+  { id: 'books',       label: 'Книги',                   emoji: '📚',  cat: 'cat_culture', sort_order: 5 },
+  { id: 'exhibitions', label: 'Выставки / музеи',        emoji: '🖼️', cat: 'cat_culture', sort_order: 6 },
+  { id: 'podcasts',    label: 'Подкасты',                emoji: '🎙️', cat: 'cat_culture', sort_order: 7 },
+  { id: 'festivals',   label: 'Фестивали',               emoji: '🎡',  cat: 'cat_culture', sort_order: 8 },
+  { id: 'standup',     label: 'Стендап',                 emoji: '🎤',  cat: 'cat_culture', sort_order: 9 },
+  { id: 'instruments', label: 'Играю на инструментах',   emoji: '🎸',  cat: 'cat_culture', sort_order: 10 },
+  // cat_home
+  { id: 'cooking',     label: 'Готовка',                 emoji: '👨‍🍳', cat: 'cat_home',    sort_order: 0 },
+  { id: 'baking',      label: 'Выпечка',                 emoji: '🥐',  cat: 'cat_home',    sort_order: 1 },
+  { id: 'coffee',      label: 'Кофе / чай',             emoji: '☕',  cat: 'cat_home',    sort_order: 2 },
+  { id: 'restaurants', label: 'Рестораны / кафе',       emoji: '🍽️', cat: 'cat_home',    sort_order: 3 },
+  { id: 'streetfood',  label: 'Стритфуд',               emoji: '🍕',  cat: 'cat_home',    sort_order: 4 },
+  { id: 'garden',      label: 'Сад / огород',           emoji: '🌱',  cat: 'cat_home',    sort_order: 5 },
+  { id: 'homecomfort', label: 'Домашний уют',           emoji: '🏡',  cat: 'cat_home',    sort_order: 6 },
+  { id: 'diy',         label: 'Ремонт / DIY',           emoji: '🔧',  cat: 'cat_home',    sort_order: 7 },
+  { id: 'crafts',      label: 'Рукоделие',              emoji: '🧶',  cat: 'cat_home',    sort_order: 8 },
+  { id: 'pets',        label: 'Домашние животные',      emoji: '🐾',  cat: 'cat_home',    sort_order: 9 },
+  // cat_nature
+  { id: 'travel',      label: 'Путешествия',            emoji: '✈️',  cat: 'cat_nature',  sort_order: 0 },
+  { id: 'hiking',      label: 'Походы',                 emoji: '🥾',  cat: 'cat_nature',  sort_order: 1 },
+  { id: 'fishing',     label: 'Рыбалка',               emoji: '🎣',  cat: 'cat_nature',  sort_order: 2 },
+  { id: 'camping',     label: 'Кемпинг',               emoji: '🏕️', cat: 'cat_nature',  sort_order: 3 },
+  { id: 'mushrooms',   label: 'Грибы / ягоды',         emoji: '🍄',  cat: 'cat_nature',  sort_order: 4 },
+  { id: 'dacha',       label: 'Дача',                  emoji: '🌻',  cat: 'cat_nature',  sort_order: 5 },
+  { id: 'bikehike',    label: 'Велопоходы',            emoji: '🚵',  cat: 'cat_nature',  sort_order: 6 },
+  { id: 'roadtrip',    label: 'Автопутешествия',       emoji: '🚗',  cat: 'cat_nature',  sort_order: 7 },
+  { id: 'naturewalk',  label: 'Прогулки на природе',   emoji: '🌿',  cat: 'cat_nature',  sort_order: 8 },
+  { id: 'excursions',  label: 'Экскурсии',             emoji: '🗺️', cat: 'cat_nature',  sort_order: 9 },
+  // cat_games
+  { id: 'boardgames',  label: 'Настолки',              emoji: '🎲',  cat: 'cat_games',   sort_order: 0 },
+  { id: 'quiz',        label: 'Квиз',                  emoji: '🧠',  cat: 'cat_games',   sort_order: 1 },
+  { id: 'gaming',      label: 'Гейминг',               emoji: '🎮',  cat: 'cat_games',   sort_order: 2 },
+  { id: 'karaoke',     label: 'Караоке',               emoji: '🎤',  cat: 'cat_games',   sort_order: 3 },
+  { id: 'parties',     label: 'Вечеринки',             emoji: '🥳',  cat: 'cat_games',   sort_order: 4 },
+  { id: 'teamgames',   label: 'Командные игры',        emoji: '🏅',  cat: 'cat_games',   sort_order: 5 },
+  { id: 'volunteer',   label: 'Волонтёрство',          emoji: '🤝',  cat: 'cat_games',   sort_order: 6 },
+  { id: 'newpeople',   label: 'Новые знакомства',      emoji: '👋',  cat: 'cat_games',   sort_order: 7 },
+  { id: 'clubs',       label: 'Клубы по интересам',   emoji: '🏛️', cat: 'cat_games',   sort_order: 8 },
+  { id: 'intgames',    label: 'Интеллектуальные игры', emoji: '♟️', cat: 'cat_games',   sort_order: 9 },
+  // cat_tech
+  { id: 'coding',      label: 'Код / программирование', emoji: '💻', cat: 'cat_tech',    sort_order: 0 },
+  { id: 'ai',          label: 'AI / нейросети',        emoji: '🤖',  cat: 'cat_tech',    sort_order: 1 },
+  { id: 'gadgets',     label: 'Гаджеты',               emoji: '📱',  cat: 'cat_tech',    sort_order: 2 },
+  { id: 'photovideo',  label: 'Фото / видео',          emoji: '📸',  cat: 'cat_tech',    sort_order: 3 },
+  { id: 'design',      label: 'Дизайн',                emoji: '🎨',  cat: 'cat_tech',    sort_order: 4 },
+  { id: 'printing',    label: '3D-печать',             emoji: '🖨️', cat: 'cat_tech',    sort_order: 5 },
+  { id: 'drones',      label: 'Дроны',                 emoji: '🚁',  cat: 'cat_tech',    sort_order: 6 },
+  { id: 'auto',        label: 'Авто / техника',        emoji: '🚘',  cat: 'cat_tech',    sort_order: 7 },
+  { id: 'finance',     label: 'Финансы',               emoji: '💰',  cat: 'cat_tech',    sort_order: 8 },
+  { id: 'learning',    label: 'Обучение / курсы',      emoji: '📖',  cat: 'cat_tech',    sort_order: 9 },
+]
+
+function seedHobbiesV2() {
+  const upsertParent = db.prepare(`
+    INSERT INTO hobbies (id, parent_id, label, emoji, sort_order, is_active)
+    VALUES (?, NULL, ?, ?, ?, 1)
+    ON CONFLICT(id) DO UPDATE SET
+      parent_id = NULL,
+      label = excluded.label,
+      emoji = excluded.emoji,
+      sort_order = excluded.sort_order,
+      is_active = 1
+  `)
+  const upsertChild = db.prepare(`
+    INSERT INTO hobbies (id, parent_id, label, emoji, sort_order, is_active)
+    VALUES (?, ?, ?, ?, ?, 1)
+    ON CONFLICT(id) DO UPDATE SET
+      parent_id = excluded.parent_id,
+      label = excluded.label,
+      emoji = excluded.emoji,
+      sort_order = excluded.sort_order,
+      is_active = 1
+  `)
+  db.transaction(() => {
+    for (const p of PARENT_CATS_V2) upsertParent.run(p.id, p.label, p.emoji, p.sort_order)
+    for (const h of HOBBIES_V2) upsertChild.run(h.id, h.cat, h.label, h.emoji, h.sort_order)
+  })()
+}
+
+// ── Миграция: мягкое обновление справочника интересов v2 ─────────────────────
+;(function migrateHobbiesV2() {
+  const flag = db.prepare("SELECT value FROM kv_meta WHERE key = 'hobbies_catalog_v3_safe'").get()
+  if (flag) return
+  logger.info('Migrating hobbies to v2 catalogue without clearing user choices...')
+  seedHobbiesV2()
+  db.prepare("INSERT OR REPLACE INTO kv_meta (key, value) VALUES ('hobbies_catalog_v3_safe', '1')").run()
+  logger.info('Hobbies v2 migration complete')
+})()
+
 // ── Seed хобби (только если таблица пустая) ─────────────────────────────────
 
 const hobbyCount = db.prepare('SELECT COUNT(*) as cnt FROM hobbies').get().cnt
 if (hobbyCount === 0) {
-  const CATEGORY_MAP = {
-    sport:    'cat_sport',
-    creative: 'cat_creative',
-    tech:     'cat_tech',
-    nature:   'cat_nature',
-    social:   'cat_social',
-  }
-  const PARENT_CATS = [
-    { id: 'cat_sport',    label: 'Спорт',      emoji: '⚽', sort_order: 0 },
-    { id: 'cat_creative', label: 'Творчество', emoji: '🎨', sort_order: 1 },
-    { id: 'cat_tech',     label: 'Технологии', emoji: '💻', sort_order: 2 },
-    { id: 'cat_nature',   label: 'Природа',    emoji: '🌿', sort_order: 3 },
-    { id: 'cat_social',   label: 'Общение',    emoji: '🤝', sort_order: 4 },
-  ]
-  const HOBBIES = [
-    { id: 'gym',        label: 'Зал',         emoji: '🏋️', category: 'sport',    sort_order: 0 },
-    { id: 'football',   label: 'Футбол',       emoji: '⚽',  category: 'sport',    sort_order: 1 },
-    { id: 'cycling',    label: 'Велосипед',    emoji: '🚴',  category: 'sport',    sort_order: 2 },
-    { id: 'running',    label: 'Бег',          emoji: '🏃',  category: 'sport',    sort_order: 3 },
-    { id: 'swimming',   label: 'Плавание',     emoji: '🏊',  category: 'sport',    sort_order: 4 },
-    { id: 'yoga',       label: 'Йога',         emoji: '🧘',  category: 'sport',    sort_order: 5 },
-    { id: 'drawing',    label: 'Рисование',    emoji: '🎨',  category: 'creative', sort_order: 0 },
-    { id: 'photo',      label: 'Фото',         emoji: '📸',  category: 'creative', sort_order: 1 },
-    { id: 'music',      label: 'Музыка',       emoji: '🎸',  category: 'creative', sort_order: 2 },
-    { id: 'cooking',    label: 'Готовка',      emoji: '👨‍🍳', category: 'creative', sort_order: 3 },
-    { id: 'crafts',     label: 'Хэндмейд',     emoji: '🧶',  category: 'creative', sort_order: 4 },
-    { id: 'dancing',    label: 'Танцы',        emoji: '💃',  category: 'creative', sort_order: 5 },
-    { id: 'gaming',     label: 'Гейминг',      emoji: '🎮',  category: 'tech',     sort_order: 0 },
-    { id: 'coding',     label: 'Код',          emoji: '💻',  category: 'tech',     sort_order: 1 },
-    { id: 'printing',   label: '3D-печать',    emoji: '🖨️', category: 'tech',     sort_order: 2 },
-    { id: 'drones',     label: 'Дроны',        emoji: '🚁',  category: 'tech',     sort_order: 3 },
-    { id: 'smarthome',  label: 'Умный дом',    emoji: '🏠',  category: 'tech',     sort_order: 4 },
-    { id: 'podcasts',   label: 'Подкасты',     emoji: '🎙️', category: 'tech',     sort_order: 5 },
-    { id: 'camping',    label: 'Кемпинг',      emoji: '🏕️', category: 'nature',   sort_order: 0 },
-    { id: 'fishing',    label: 'Рыбалка',      emoji: '🎣',  category: 'nature',   sort_order: 1 },
-    { id: 'garden',     label: 'Сад',          emoji: '🌱',  category: 'nature',   sort_order: 2 },
-    { id: 'hiking',     label: 'Туризм',       emoji: '🥾',  category: 'nature',   sort_order: 3 },
-    { id: 'bikehike',   label: 'Велопоход',    emoji: '🚵',  category: 'nature',   sort_order: 4 },
-    { id: 'mushrooms',  label: 'Грибы',        emoji: '🍄',  category: 'nature',   sort_order: 5 },
-    { id: 'streetfood', label: 'Стритфуд',     emoji: '🍕',  category: 'social',   sort_order: 0 },
-    { id: 'boardgames', label: 'Настолки',     emoji: '🎲',  category: 'social',   sort_order: 1 },
-    { id: 'movies',     label: 'Кино',         emoji: '🎬',  category: 'social',   sort_order: 2 },
-    { id: 'travel',     label: 'Путешествия',  emoji: '✈️',  category: 'social',   sort_order: 3 },
-    { id: 'volunteer',  label: 'Волонтёрство', emoji: '🤝',  category: 'social',   sort_order: 4 },
-    { id: 'parties',    label: 'Вечеринки',    emoji: '🥳',  category: 'social',   sort_order: 5 },
-  ]
-
-  const insertParent = db.prepare(
-    'INSERT OR IGNORE INTO hobbies (id, parent_id, label, emoji, sort_order) VALUES (?, NULL, ?, ?, ?)'
-  )
-  const insertChild = db.prepare(
-    'INSERT OR IGNORE INTO hobbies (id, parent_id, label, emoji, sort_order) VALUES (?, ?, ?, ?, ?)'
-  )
-  db.transaction(() => {
-    for (const p of PARENT_CATS) insertParent.run(p.id, p.label, p.emoji, p.sort_order)
-    for (const h of HOBBIES) insertChild.run(h.id, CATEGORY_MAP[h.category], h.label, h.emoji, h.sort_order)
-  })()
+  seedHobbiesV2()
 }
 
 // ── Таблица reaction_types ───────────────────────────────────────────────────
@@ -322,11 +406,28 @@ db.exec(`
 
 // ── Индексы для горячих запросов ─────────────────────────────────────────────
 db.exec(`
+  DELETE FROM matches
+  WHERE rowid NOT IN (
+    SELECT MIN(rowid)
+    FROM matches
+    GROUP BY
+      CASE WHEN user_a_id < user_b_id THEN user_a_id ELSE user_b_id END,
+      CASE WHEN user_a_id < user_b_id THEN user_b_id ELSE user_a_id END
+  );
+`)
+
+db.exec(`
   CREATE INDEX IF NOT EXISTS idx_reactions_to_from
   ON reactions(to_user_id, from_user_id);
 
   CREATE INDEX IF NOT EXISTS idx_matches_user_pair
   ON matches(user_a_id, user_b_id);
+
+  CREATE UNIQUE INDEX IF NOT EXISTS idx_matches_unique_normalized_pair
+  ON matches(
+    CASE WHEN user_a_id < user_b_id THEN user_a_id ELSE user_b_id END,
+    CASE WHEN user_a_id < user_b_id THEN user_b_id ELSE user_a_id END
+  );
 
   CREATE INDEX IF NOT EXISTS idx_user_hobbies_user_hobby
   ON user_hobbies(user_id, hobby_id);

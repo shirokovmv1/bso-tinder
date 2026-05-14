@@ -1,28 +1,20 @@
 import { useEffect, useState, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { AnimatePresence, motion } from 'framer-motion'
-import { api, type ApiUser, type ApiDepartment, type ApiReactionType } from '@/api/client'
+import { AnimatePresence } from 'framer-motion'
+import { api, type ApiUser, type ApiReactionType } from '@/api/client'
 import { useAppStore, selectFilteredEmployees } from '@/store/useAppStore'
+import CompactProfileCard from '@/components/feed/CompactProfileCard'
+import ProfilePanel from '@/components/feed/ProfilePanel'
 import BottomNav from '@/components/ui/BottomNav'
-
-const TONES = [
-  'linear-gradient(135deg,#FF8A33,#FF6B00)',
-  'linear-gradient(135deg,#5b6cff,#3a4be0)',
-  'linear-gradient(135deg,#34D399,#0EA371)',
-  'linear-gradient(135deg,#B388FF,#7C4DFF)',
-  'linear-gradient(135deg,#FF8FAB,#E94B7C)',
-]
-const toneFor = (id: string) => TONES[id.charCodeAt(0) % TONES.length]
 
 export default function FeedPage() {
   const appEnv = import.meta.env.VITE_APP_ENV ?? 'prod'
-  const { setEmployees, setSearchQuery, setDepartmentFilter, searchQuery, departmentFilter } = useAppStore()
+  const { setEmployees, setSearchQuery, searchQuery, currentUser } = useAppStore()
   const filtered = useAppStore(selectFilteredEmployees)
   const [loading, setLoading] = useState(true)
   const [loadError, setLoadError] = useState('')
   const [healthStatus, setHealthStatus] = useState<'checking' | 'ok' | 'offline'>('checking')
   const [selected, setSelected] = useState<ApiUser | null>(null)
-  const [depts, setDepts] = useState<ApiDepartment[]>([])
   const [reactionTypes, setReactionTypes] = useState<ApiReactionType[]>([])
   const [sentReactions, setSentReactions] = useState<Record<string, Set<string>>>({})
   const [pendingReactions, setPendingReactions] = useState<Record<string, boolean>>({})
@@ -34,7 +26,6 @@ export default function FeedPage() {
     try {
       const users = await api.getUsers()
       setEmployees(users)
-      api.getDepartments().then(setDepts).catch(() => {})
       api.getReactionTypes().then(setReactionTypes).catch(() => {})
       api.getMyReactionsSent().then(rows => {
         const map: Record<string, Set<string>> = {}
@@ -74,6 +65,7 @@ export default function FeedPage() {
   }, [])
 
   const handleReaction = useCallback(async (toUserId: string, typeId: string) => {
+    if (toUserId === currentUser?.id) return
     const key = `${toUserId}:${typeId}`
     if (pendingReactions[key]) return
     setPendingReactions(prev => ({ ...prev, [key]: true }))
@@ -91,9 +83,16 @@ export default function FeedPage() {
     finally {
       setPendingReactions(prev => ({ ...prev, [key]: false }))
     }
-  }, [pendingReactions])
+  }, [currentUser?.id, pendingReactions])
 
-  const deptTabs = ['Все', ...depts.map(d => d.name)]
+  const handleOpenProfile = useCallback((user: ApiUser) => {
+    setSelected(user)
+    api.getUser(user.id)
+      .then(fullUser => {
+        setSelected(current => current?.id === user.id ? fullUser : current)
+      })
+      .catch(() => {})
+  }, [])
 
   return (
     <div className="min-h-full flex flex-col bg-page-deep">
@@ -143,21 +142,8 @@ export default function FeedPage() {
           </div>
         </div>
 
-        {/* Dept tabs — динамические из БД */}
-        <div className="mx-auto max-w-md px-5 pb-3 flex gap-1.5 overflow-x-auto scrollbar-none">
-          {deptTabs.map(d => (
-            <button
-              key={d}
-              onClick={() => setDepartmentFilter(d)}
-              className={`shrink-0 px-3.5 py-1.5 rounded-full text-[13px] font-bold ease-spring press-shrink transition-all border ${
-                departmentFilter === d
-                  ? 'bg-white text-graphite-900 border-transparent'
-                  : 'glass-1 text-white/70'
-              }`}
-            >
-              {d}
-            </button>
-          ))}
+        <div className="mx-auto max-w-md px-5 pb-3">
+          <p className="text-[11px] font-bold text-white/35">Ищите по имени, фамилии или должности</p>
         </div>
       </header>
 
@@ -178,137 +164,54 @@ export default function FeedPage() {
           <div key={i} className="glass-1 rounded-2xl p-3.5 h-24 animate-pulse" />
         ))}
         {!loading && filtered.map((p, i) => (
-          <PersonCard key={p.id} user={p} delay={i * 40} onClick={() => setSelected(p)} />
+          <CompactProfileCard
+            key={p.id}
+            user={p}
+            delay={i * 40}
+            reactionTypes={reactionTypes}
+            sentReactionIds={sentReactions[p.id]}
+            pendingReactions={pendingReactions}
+            isSelf={p.id === currentUser?.id}
+            onOpen={() => handleOpenProfile(p)}
+            onReact={handleReaction}
+          />
         ))}
         {!loading && !filtered.length && (
-          <p className="text-center py-12 text-white/40 text-[13px] font-bold">Никого не нашли</p>
+          <div className="py-12 text-center">
+            <p className="text-[13px] font-bold text-white/45">
+              {searchQuery.trim()
+                ? 'Ничего не нашли. Проверьте имя, фамилию или должность.'
+                : 'Лента пока пуста'}
+            </p>
+            {searchQuery.trim() && (
+              <button
+                type="button"
+                onClick={() => setSearchQuery('')}
+                className="mt-3 rounded-full border border-orange-500/40 bg-orange-500/15 px-4 py-2 text-[12px] font-bold text-orange-300"
+              >
+                Сбросить поиск
+              </button>
+            )}
+          </div>
         )}
       </div>
 
       <BottomNav />
 
-      {/* Employee modal */}
+      {/* Employee panel */}
       <AnimatePresence>
         {selected && (
-          <motion.div
-            initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-            className="fixed inset-0 z-50 bg-black/60 flex items-end"
-            onClick={() => setSelected(null)}
-          >
-            <motion.div
-              initial={{ y: '100%' }} animate={{ y: 0 }} exit={{ y: '100%' }}
-              transition={{ type: 'spring', damping: 28, stiffness: 300 }}
-              className="w-full glass-3 rounded-t-[32px] p-6 pb-10"
-              onClick={e => e.stopPropagation()}
-            >
-              <div className="w-12 h-1 bg-white/20 rounded-full mx-auto mb-6" />
-              <div className="flex items-center gap-4 mb-5">
-                <div className="w-20 h-20 rounded-full grid place-items-center text-white font-black text-[30px] border border-white/20"
-                  style={{ background: toneFor(selected.id) }}>
-                  {(selected.name ?? '?')[0]}
-                </div>
-                <div>
-                  <h2 className="font-black text-[20px] tracking-tight">{selected.name}</h2>
-                  <p className="text-[11px] font-black uppercase tracking-[0.08em] text-white/50 mt-1">{selected.department}</p>
-                  {selected.pitch && (
-                    <p className="text-[12px] text-white/60 mt-1 italic">{selected.pitch}</p>
-                  )}
-                </div>
-                <button
-                  onClick={() => { navigate('/match'); setSelected(null) }}
-                  className="ml-auto px-4 py-2 rounded-full bg-orange-500/20 border border-orange-500/40 text-orange-400 text-[13px] font-bold"
-                >
-                  Мэтч ↗
-                </button>
-              </div>
-              {selected.hobbies?.filter(h => h.parent_id !== null).length ? (
-                <>
-                  <p className="text-[10px] font-black uppercase tracking-[0.12em] text-white/40 mb-3">Интересы</p>
-                  <div className="flex flex-wrap gap-2 mb-5">
-                    {selected.hobbies.filter(h => h.parent_id !== null).map(h => (
-                      <span key={h.id} className="px-3 py-1.5 rounded-full text-[13px] font-bold glass-1 text-white/85">
-                        <span className="mr-1">{h.emoji}</span>{h.label}
-                      </span>
-                    ))}
-                  </div>
-                </>
-              ) : null}
-
-              {reactionTypes.length > 0 && (
-                <>
-                  <p className="text-[10px] font-black uppercase tracking-[0.12em] text-white/40 mb-3">Реакция</p>
-                  <div className="flex gap-2 flex-wrap">
-                    {reactionTypes.map(rt => {
-                      const active = sentReactions[selected.id]?.has(rt.id)
-                      const reactionKey = `${selected.id}:${rt.id}`
-                      const isPending = !!pendingReactions[reactionKey]
-                      return (
-                        <button
-                          key={rt.id}
-                          disabled={isPending}
-                          onClick={() => handleReaction(selected.id, rt.id)}
-                          className={`flex items-center gap-1.5 px-3 py-2 rounded-full text-sm font-bold transition-all border disabled:opacity-60 disabled:cursor-not-allowed ${
-                            active
-                              ? 'bg-orange-500 border-transparent text-white'
-                              : 'glass-1 border-white/10 text-white/70 hover:bg-white/10'
-                          }`}
-                        >
-                          <span>{rt.emoji}</span>
-                          <span className="text-[12px]">{isPending ? '...' : rt.label}</span>
-                        </button>
-                      )
-                    })}
-                  </div>
-                </>
-              )}
-            </motion.div>
-          </motion.div>
+          <ProfilePanel
+            user={selected}
+            reactionTypes={reactionTypes}
+            sentReactionIds={sentReactions[selected.id]}
+            pendingReactions={pendingReactions}
+            isSelf={selected.id === currentUser?.id}
+            onClose={() => setSelected(null)}
+            onReact={handleReaction}
+          />
         )}
       </AnimatePresence>
     </div>
-  )
-}
-
-function PersonCard({ user, delay, onClick }: { user: ApiUser; delay: number; onClick: () => void }) {
-  const hobbies = (user.hobbies ?? []).filter(h => h.parent_id !== null).slice(0, 3)
-  const reactions = (user.reaction_counts ?? []).slice(0, 4)
-  return (
-    <button
-      onClick={onClick}
-      style={{ animationDelay: `${delay}ms` }}
-      className="fade-up w-full text-left glass-1 rounded-2xl p-3.5 shadow-card flex items-center gap-3.5 press-shrink ease-spring transition-all hover:bg-white/10"
-    >
-      <div className="relative shrink-0">
-        <div className="w-14 h-14 rounded-full grid place-items-center text-white font-black text-[22px] border border-white/20"
-          style={{ background: toneFor(user.id) }}>
-          {(user.name ?? '?')[0]}
-        </div>
-      </div>
-      <div className="flex-1 min-w-0">
-        <div className="font-extrabold text-[16px] leading-tight truncate">{user.name}</div>
-        <div className="text-[11px] font-bold tracking-[0.06em] uppercase text-white/55 mt-0.5">{user.department}</div>
-        <div className="flex flex-wrap gap-1 mt-1.5">
-          {hobbies.map(h => (
-            <span key={h.id} className="text-[11px] font-bold bg-white/10 border border-white/10 px-2 py-0.5 rounded-full text-white/85">
-              <span className="mr-0.5">{h.emoji}</span>{h.label}
-            </span>
-          ))}
-        </div>
-        {reactions.length > 0 && (
-          <div className="flex gap-1.5 mt-1.5">
-            {reactions.map(r => (
-              <span
-                key={r.reaction_type_id}
-                className="text-[11px] font-bold px-2 py-0.5 rounded-full"
-                style={{ background: 'rgba(255,107,0,0.12)', border: '1px solid rgba(255,107,0,0.22)', color: 'rgba(255,200,120,0.9)' }}
-              >
-                {r.emoji} {r.count}
-              </span>
-            ))}
-          </div>
-        )}
-      </div>
-      <span className="text-white/30 text-2xl font-black shrink-0">›</span>
-    </button>
   )
 }

@@ -111,6 +111,13 @@ body {
 }
 .bg-page-deep { background: var(--bg-page-deep); }
 
+.onboarding-page {
+  height: 100%;
+  min-height: 100dvh;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior-y: contain;
+}
+
 /* ============================================================
    CTA button base
    ============================================================ */
@@ -180,3 +187,64 @@ body {
 ::-webkit-scrollbar { width: 3px; }
 ::-webkit-scrollbar-track { background: transparent; }
 ::-webkit-scrollbar-thumb { background: rgba(255, 107, 0, 0.4); border-radius: 999px; }
+
+/* ============================================================
+   DepartmentDonut
+   ============================================================ */
+.donut-wrapper {
+  position: relative;
+  width: min(88vw, 340px);
+  max-width: 100%;
+  aspect-ratio: 1 / 1;
+  margin: 0 auto;
+}
+
+.donut-sector        { cursor: pointer; }
+.donut-sector--muted { cursor: default; }
+
+.match-cta-btn {
+  min-width: 176px;
+  min-height: 60px;
+  padding: 0 28px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  cursor: pointer;
+  background: linear-gradient(180deg, #FF9A3D 0%, #FF6B00 56%, #D94F00 100%);
+  color: #FFFFFF;
+  font-family: Manrope, system-ui, sans-serif;
+  font-size: 20px;
+  font-weight: 900;
+  letter-spacing: 0.04em;
+  box-shadow:
+    0 14px 28px rgba(255, 107, 0, 0.32),
+    0 5px 0 rgba(160, 60, 0, 0.80),
+    inset 0 1px 0 rgba(255, 255, 255, 0.30);
+  transition:
+    transform 140ms var(--ease-spring),
+    box-shadow 160ms;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.match-cta-btn:active {
+  transform: translateY(2px) scale(0.98);
+  box-shadow:
+    0 8px 16px rgba(255, 107, 0, 0.26),
+    0 2px 0 rgba(160, 60, 0, 0.80),
+    inset 0 1px 0 rgba(255, 255, 255, 0.22);
+}
+.match-cta-btn:disabled {
+  cursor: wait;
+  opacity: 0.78;
+}
+
+@keyframes donutSpin {
+  to { transform: rotate(360deg); }
+}
+
+.donut-loading-arc {
+  animation: donutSpin 1.2s linear infinite;
+  transform-box: fill-box;
+  transform-origin: 50% 50%;
+  filter: drop-shadow(0 0 6px var(--brand-orange)) drop-shadow(0 0 2px rgba(255,255,255,0.5));
+}

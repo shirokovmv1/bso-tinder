@@ -104,6 +104,18 @@ function ActionBtn({ onClick, disabled, title, children, danger }: {
   )
 }
 
+function arrayBufferToBase64(buffer: ArrayBuffer) {
+  const bytes = new Uint8Array(buffer)
+  let binary = ''
+  const chunkSize = 0x8000
+
+  for (let i = 0; i < bytes.length; i += chunkSize) {
+    binary += String.fromCharCode(...bytes.subarray(i, i + chunkSize))
+  }
+
+  return btoa(binary)
+}
+
 // ── вкладка "Пользователи" ──────────────────────────────────────────────────
 function UsersTab() {
   const [users, setUsers] = useState<ApiUser[]>([])
@@ -111,6 +123,8 @@ function UsersTab() {
   const [toast, setToast] = useState<string | null>(null)
   const [copyingId, setCopyingId] = useState<string | null>(null)
   const [exporting, setExporting] = useState(false)
+  const [importing, setImporting] = useState(false)
+  const [importErrors, setImportErrors] = useState<Array<{ line: number; error: string }>>([])
 
   const showToast = (msg: string) => setToast(msg)
 
@@ -166,20 +180,64 @@ function UsersTab() {
     finally { setExporting(false) }
   }
 
+  const handleImportCsv = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    e.target.value = ''
+    if (!file) return
+    setImporting(true)
+    setImportErrors([])
+    try {
+      const csvBase64 = arrayBufferToBase64(await file.arrayBuffer())
+      const result = await api.adminImportCsv(csvBase64)
+      setImportErrors(result.errors)
+      showToast(`Импорт: создано ${result.created}, обновлено ${result.updated}, ошибок ${result.errors.length}`)
+      await loadUsers()
+    } catch (err) {
+      showToast(err instanceof Error ? err.message : 'Ошибка импорта')
+    } finally {
+      setImporting(false)
+    }
+  }
+
   return (
     <div className="flex flex-col gap-4">
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between gap-2">
         <span className="text-sm" style={{ color: 'var(--fg-3)' }}>Всего: {users.length}</span>
-        <button
-          onClick={handleExportCsv}
-          disabled={exporting || loading}
-          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-opacity disabled:opacity-50"
-          style={{ background: 'rgba(255,255,255,0.08)', color: 'var(--fg-1)', border: '1px solid rgba(255,255,255,0.12)' }}
-        >
-          <IconDownload />
-          {exporting ? 'Экспорт...' : 'Экспорт CSV'}
-        </button>
+        <div className="flex items-center gap-2">
+          <label
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-opacity ${importing || loading ? 'opacity-50 pointer-events-none' : 'cursor-pointer'}`}
+            style={{ background: 'rgba(255,255,255,0.08)', color: 'var(--fg-1)', border: '1px solid rgba(255,255,255,0.12)' }}
+          >
+            <IconPlus />
+            {importing ? 'Импорт...' : 'Импорт CSV'}
+            <input type="file" accept=".csv,text/csv" className="hidden" onChange={handleImportCsv} disabled={importing || loading} />
+          </label>
+          <button
+            onClick={handleExportCsv}
+            disabled={exporting || loading}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-opacity disabled:opacity-50"
+            style={{ background: 'rgba(255,255,255,0.08)', color: 'var(--fg-1)', border: '1px solid rgba(255,255,255,0.12)' }}
+          >
+            <IconDownload />
+            {exporting ? 'Экспорт...' : 'Экспорт CSV'}
+          </button>
+        </div>
       </div>
+
+      <div className="text-[11px] leading-relaxed" style={{ color: 'var(--fg-3)' }}>
+        Формат CSV: UTF-8 или Windows-1251, разделитель "," или ";". Колонки: email, last_name, first_name, middle_name, position, department, birthday_day, birthday_month.
+      </div>
+
+      {importErrors.length > 0 && (
+        <div className="rounded-xl p-3 text-xs space-y-1"
+          style={{ background: 'rgba(255,60,60,0.08)', border: '1px solid rgba(255,60,60,0.18)', color: '#ffb4b4' }}>
+          <div className="font-bold">Ошибки импорта:</div>
+          {importErrors.slice(0, 5).map(err => (
+            <div key={`${err.line}-${err.error}`}>Строка {err.line}: {err.error}</div>
+          ))}
+          {importErrors.length > 5 && <div>Ещё ошибок: {importErrors.length - 5}</div>}
+        </div>
+      )}
 
       {loading ? (
         <div className="text-center py-12" style={{ color: 'var(--fg-3)' }}>Загрузка...</div>

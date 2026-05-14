@@ -128,7 +128,7 @@ curl -sI http://158.255.5.199/api/health | grep -iE "x-frame|x-content|referrer|
 
 ```bash
 curl http://158.255.5.199/api/health
-# {"status":"ok","db":"ok","env":"production"}
+# {"status":"ok","db":"ok","env":"prod","nodeEnv":"production"}
 ```
 
 При недоступности БД вернёт `HTTP 503` с `{"status":"degraded","db":"error"}`.

@@ -30,6 +30,12 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
     throw new Error('Unauthorized')
   }
 
+  const contentType = res.headers.get('content-type') ?? ''
+  if (contentType.includes('text/csv')) {
+    if (!res.ok) throw new Error('Ошибка сервера')
+    return await res.blob() as T
+  }
+
   const data = await res.json()
   if (!res.ok) throw new Error(data.error ?? 'Ошибка сервера')
   return data as T
@@ -73,6 +79,8 @@ export const api = {
   // Match
   computeMatch: (userAId: string, userBId: string) =>
     request<ApiMatchResult>('/match', { method: 'POST', body: JSON.stringify({ userAId, userBId }) }),
+  computeMyMatches: () =>
+    request<ApiDepartmentMatchResponse>('/match/me', { method: 'POST' }),
 
   // ── Admin: Users ──────────────────────────────────────────────────────────
   adminUsers:       () => request<any[]>('/admin/users').then((rows) => rows.map(normalizeUser)),
@@ -84,6 +92,8 @@ export const api = {
   adminSeed:        () => request<{ success: boolean; inserted: number }>('/admin/seed', { method: 'POST' }),
   adminGetMagicLink: (id: string) => request<{ token: string; magic_url: string }>(`/admin/magic-link/${id}`),
   adminGetCsvExport: () => request<Blob>('/admin/users/csv', { headers: { Accept: 'text/csv' } } as RequestInit),
+  adminImportCsv: (csvBase64: string) =>
+    request<ApiCsvImportResult>('/admin/users/import-csv', { method: 'POST', body: JSON.stringify({ csvBase64 }) }),
 
   // ── Admin: Departments ────────────────────────────────────────────────────
   adminGetDepartments: () =>
@@ -178,6 +188,18 @@ export interface ApiUser {
   email: string
   name: string | null
   department: string | null
+  last_name?: string | null
+  first_name?: string | null
+  middle_name?: string | null
+  position?: string | null
+  birthday_day?: number | null
+  birthday_month?: number | null
+  about_short?: string | null
+  work_details?: string | null
+  current_interests?: string | null
+  last_movies?: string | null
+  last_books?: string | null
+  last_songs?: string | null
   avatar_url: string | null
   badge_id: string | null
   onboarding_done: number | boolean
@@ -188,11 +210,20 @@ export interface ApiUser {
   // Новые поля
   gender?: string
   experience_months?: number
+  zodiac_sign?: string | null
+  fav_color?: string | null
   pitch?: string
   badge_title?: string
   badge_emoji?: string
   badge_reason?: string
   reaction_counts?: ApiReactionCount[]
+}
+
+export interface ApiCsvImportResult {
+  success: boolean
+  created: number
+  updated: number
+  errors: Array<{ line: number; error: string }>
 }
 
 export interface ApiLlmSettings {
@@ -209,6 +240,26 @@ export interface ApiMatchResult {
   sharedHobbies: ApiHobby[]
   uniqueA: ApiHobby[]
   uniqueB: ApiHobby[]
+}
+
+export interface ApiMatchedUser {
+  user: Pick<ApiUser, 'id' | 'name' | 'department' | 'position' | 'avatar_url' | 'badge_id' | 'badge_title' | 'badge_emoji' | 'pitch'>
+  score: number
+  level: { id: string; label: string }
+  pitch: string
+  sharedHobbies: ApiHobby[]
+}
+
+export interface ApiDepartmentMatchGroup {
+  department: string
+  count: number
+  matches: ApiMatchedUser[]
+}
+
+export interface ApiDepartmentMatchResponse {
+  groups: ApiDepartmentMatchGroup[]
+  total: number
+  emptyMessage: string
 }
 
 export interface ApiReactionStatUser {
