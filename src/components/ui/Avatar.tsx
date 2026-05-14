@@ -22,13 +22,15 @@ const dotSizes = {
   xl: 'w-5 h-5 border-2',
 }
 
+const isRealPhoto = (url: string) => !!url && !url.includes('dicebear.com')
+
 export default function Avatar({ src, name, size = 'md', online = false, className = '' }: Props) {
   const initials = name.split(' ').map(n => n[0]).slice(0, 2).join('')
 
   return (
     <div className={`relative inline-flex shrink-0 ${className}`}>
       <div className={`${sizes[size]} rounded-full bg-graphite-700 overflow-hidden flex items-center justify-center ring-2 ring-graphite-600`}>
-        {src ? (
+        {isRealPhoto(src) ? (
           <img
             src={src}
             alt={name}

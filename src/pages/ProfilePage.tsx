@@ -37,10 +37,10 @@ export default function ProfilePage() {
         <div className="flex flex-col items-center gap-4 mb-8 fade-up" style={{ animationDelay: '60ms' }}>
           <div className="w-28 h-28 rounded-full overflow-hidden border-2 border-white/20 bg-graphite-700 grid place-items-center"
             style={{ background: `linear-gradient(135deg, ${badgeColor}66, ${badgeColor}33)` }}>
-            {currentUser.avatar_url ? (
+            {currentUser.avatar_url && !currentUser.avatar_url.includes('dicebear.com') ? (
               <img src={currentUser.avatar_url} alt="" className="w-full h-full object-cover" />
             ) : (
-              <span className="text-white font-black text-5xl">{(currentUser.name ?? currentUser.email)[0]}</span>
+              <span className="text-white/60 text-sm font-medium">Фото</span>
             )}
           </div>
           <div className="text-center">

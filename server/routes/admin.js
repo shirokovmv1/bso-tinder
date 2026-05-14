@@ -427,6 +427,16 @@ router.post('/seed', verifyAdmin, (req, res) => {
     { last: 'Михайлова',  first: 'Елена',     gender: 'f', pos: 'Менеджер по закупкам',        exp: 42,  zodiac: 'cancer',      color: 'pink',   day: 20, month: 7,  films: 'romance,fantasy',          books: 'fantasy_book,classics',     music: 'pop,classical',   about: 'Нахожу лучших поставщиков. Переговоры — моя стихия.' },
     { last: 'Комаров',    first: 'Денис',     gender: 'm', pos: 'Специалист по документам',    exp: 9,   zodiac: 'sagittarius', color: 'green',  day: 16, month: 12, films: 'comedy,scifi',             books: 'humor,sci_fi_book',         music: 'rap,electronic',  about: 'Только начинаю, но уже разобрался с документооборотом.' },
     { last: 'Степанова',  first: 'Алина',     gender: 'f', pos: 'IT-аналитик',                 exp: 54,  zodiac: 'pisces',      color: 'blue',   day: 28, month: 3,  films: 'scifi,drama',              books: 'sci_fi_book,selfdev',       music: 'indie,electronic', about: 'Связываю бизнес и технологии. Люблю красивые решения.' },
+    { last: 'Крылов',     first: 'Роман',     gender: 'm', pos: 'Логист',                       exp: 36,  zodiac: 'scorpio',     color: 'black',  day: 5,  month: 11, films: 'thriller,action',          books: 'business,nonfiction',       music: 'jazz,rock',        about: 'Строю маршруты с нуля. Каждый день новая задача.' },
+    { last: 'Власова',    first: 'Надежда',   gender: 'f', pos: 'Специалист по ВЭД',            exp: 60,  zodiac: 'virgo',       color: 'purple', day: 18, month: 9,  films: 'drama,documentary',        books: 'nonfiction,classics',       music: 'classical,indie',  about: 'Работаю с международной документацией 5 лет.' },
+    { last: 'Абрамов',    first: 'Илья',      gender: 'm', pos: 'Менеджер проектов',            exp: 84,  zodiac: 'gemini',      color: 'blue',   day: 22, month: 6,  films: 'scifi,comedy',             books: 'business,sci_fi_book',      music: 'electronic,pop',   about: 'Веду 3-4 проекта одновременно. Порядок в хаосе — моё.' },
+    { last: 'Тихонова',   first: 'Светлана',  gender: 'f', pos: 'Кассир',                       exp: 24,  zodiac: 'cancer',      color: 'pink',   day: 30, month: 7,  films: 'romance,comedy',           books: 'romance_book,selfdev',      music: 'pop,rnb',          about: 'Точность в цифрах — мой конёк. Улыбаюсь всем.' },
+    { last: 'Семёнов',    first: 'Андрей',    gender: 'm', pos: 'Оператор склада',              exp: 18,  zodiac: 'aries',       color: 'green',  day: 2,  month: 4,  films: 'action,comedy',            books: 'adventure,humor',           music: 'rock,rap',         about: 'Быстро нахожу нужное на складе. Работаю слаженно.' },
+    { last: 'Коваленко',  first: 'Виктория',  gender: 'f', pos: 'Менеджер по продажам',         exp: 42,  zodiac: 'leo',         color: 'orange', day: 15, month: 8,  films: 'comedy,fantasy',           books: 'selfdev,fantasy_book',      music: 'pop,indie',        about: 'Продажи — это моё призвание. Люблю переговоры.' },
+    { last: 'Харитонов',  first: 'Евгений',   gender: 'm', pos: 'Водитель',                     exp: 120, zodiac: 'taurus',      color: 'red',    day: 10, month: 5,  films: 'action,documentary',       books: 'adventure,nonfiction',      music: 'rock,metal',       about: '10 лет за рулём. Знаю дороги лучше навигатора.' },
+    { last: 'Лазарева',   first: 'Марина',    gender: 'f', pos: 'Офис-менеджер',                exp: 30,  zodiac: 'libra',       color: 'pink',   day: 6,  month: 10, films: 'romance,drama',            books: 'classics,romance_book',     music: 'pop,classical',    about: 'Держу офис в порядке. Всегда знаю где что лежит.' },
+    { last: 'Щербаков',   first: 'Константин',gender: 'm', pos: 'Системный администратор',      exp: 96,  zodiac: 'capricorn',   color: 'blue',   day: 24, month: 1,  films: 'scifi,thriller',           books: 'sci_fi_book,nonfiction',    music: 'electronic,metal', about: 'Держу инфраструктуру в тонусе. Люблю автоматизацию.' },
+    { last: 'Гусева',     first: 'Полина',    gender: 'f', pos: 'Тренинг-менеджер',             exp: 36,  zodiac: 'aquarius',    color: 'purple', day: 13, month: 2,  films: 'drama,documentary',        books: 'selfdev,nonfiction',        music: 'indie,pop',        about: 'Обучаю команду. Вижу потенциал в каждом человеке.' },
   ]
 
   // Общее ядро хобби у всех (гарантирует overlap)
@@ -456,20 +466,17 @@ router.post('/seed', verifyAdmin, (req, res) => {
       const fullName = `${p.last} ${p.first}`
       const email = `${p.first.toLowerCase()}.${p.last.toLowerCase()}@bso-cc.ru`
       const dept = activeDepts[Math.floor(Math.random() * activeDepts.length)]
-      const avatarStyle = p.gender === 'f' ? 'lorelei' : 'micah'
-      const avatar = `https://api.dicebear.com/7.x/${avatarStyle}/svg?seed=${encodeURIComponent(p.first)}`
-
       insertUser.run(
-        id, email, fullName, p.last, p.first, dept, avatar, 'allrounder',
+        id, email, fullName, p.last, p.first, dept, null, 'allrounder',
         p.gender, p.pos, p.exp,
         p.day, p.month, p.zodiac, p.color,
         p.films, p.books, p.music, p.about
       )
+      // Сбросить dicebear у уже существующих пользователей
       db.prepare(`
-        UPDATE users
-        SET avatar_url = ?
-        WHERE email = ? AND (avatar_url IS NULL OR avatar_url LIKE '%avataaars%')
-      `).run(avatar, email)
+        UPDATE users SET avatar_url = NULL
+        WHERE email = ? AND avatar_url LIKE '%dicebear%'
+      `).run(email)
 
       // 5 общих + 3 уникальных из varied pool
       const varied = [...VARIED_POOL].sort(() => 0.5 - Math.random()).slice(0, 3)

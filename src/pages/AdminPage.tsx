@@ -282,7 +282,7 @@ function UsersTab() {
             >
               <div className="w-9 h-9 rounded-full flex-shrink-0 flex items-center justify-center text-sm font-bold overflow-hidden"
                 style={{ background: 'rgba(255,107,0,0.2)', color: 'var(--brand-orange)' }}>
-                {user.avatar_url
+                {user.avatar_url && !user.avatar_url.includes('dicebear.com')
                   ? <img src={user.avatar_url} alt="" className="w-full h-full object-cover" />
                   : (user.name?.[0] ?? user.email[0]).toUpperCase()}
               </div>

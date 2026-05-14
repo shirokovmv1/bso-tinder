@@ -225,7 +225,7 @@ function MatchCard({ match, selected, reactionTypes, pendingReaction, onSelect, 
       <button onClick={onSelect} className="w-full flex items-center gap-3 text-left">
         <div className="w-12 h-12 rounded-full grid place-items-center text-white font-black text-[18px] shrink-0 border border-white/15"
           style={{ background: 'linear-gradient(135deg,#FF8A33,#FF6B00)' }}>
-          {match.user.avatar_url
+          {match.user.avatar_url && !match.user.avatar_url.includes('dicebear.com')
             ? <img src={match.user.avatar_url} alt="" className="w-full h-full rounded-full object-cover" />
             : initials(match.user.name)}
         </div>

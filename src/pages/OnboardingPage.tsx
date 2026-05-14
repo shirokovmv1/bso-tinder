@@ -177,10 +177,7 @@ export default function OnboardingPage() {
         position: position.trim(),
         birthday_day: birthdayDay ? Number(birthdayDay) : null,
         birthday_month: birthdayMonth ? Number(birthdayMonth) : null,
-        avatar_url: photoUrl || currentUser.avatar_url || (() => {
-          const style = gender === 'f' ? 'lorelei' : 'micah'
-          return `https://api.dicebear.com/7.x/${style}/svg?seed=${encodeURIComponent(firstName)}`
-        })(),
+        avatar_url: photoUrl || (currentUser.avatar_url && !currentUser.avatar_url.includes('dicebear.com') ? currentUser.avatar_url : null),
         badge_id: badge.id,
         hobbyIds: selectedHobbies.map(h => h.id),
         ...(gender ? { gender } : {}),

@@ -52,7 +52,7 @@ export default function CompactProfileCard({
     >
       <div className="flex items-center gap-3.5">
         <div className="relative h-14 w-14 shrink-0 overflow-hidden rounded-full border border-white/20">
-          {user.avatar_url ? (
+          {user.avatar_url && !user.avatar_url.includes('dicebear.com') ? (
             <img src={user.avatar_url} alt={displayName} className="h-full w-full object-cover" />
           ) : (
             <div
