@@ -207,7 +207,9 @@ export default function OnboardingPage() {
 
   const profileReady = !!(firstName.trim() && lastName.trim() && department)
   const hobbiesReady = selectedHobbies.length >= MIN_HOBBIES
+  const hasRealPhoto = !!(photoUrl || (currentUser?.avatar_url && !currentUser.avatar_url.includes('dicebear.com')))
   const step3Ready   = (
+    hasRealPhoto &&
     aboutShort.trim().length >= 3 &&
     workDetails.trim().length >= 3 &&
     currentInterestsText.trim().length >= 3 &&
@@ -398,6 +400,11 @@ export default function OnboardingPage() {
           <div className="mx-auto max-w-md space-y-2">
             {step > 1 && (
               <button onClick={() => setStep((step - 1) as Step)} className="w-full text-[13px] font-bold text-white/40">‹ Назад</button>
+            )}
+            {step === 3 && !hasRealPhoto && (
+              <p className="text-center text-[13px] font-bold text-orange-300/80">
+                📸 Загрузите фото — без него бейдж не выдаём
+              </p>
             )}
             <button
               disabled={
