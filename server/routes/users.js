@@ -12,10 +12,9 @@ const MIN_NAME_LENGTH = 2
 const MAX_DEPARTMENT_LENGTH = 80
 const MAX_POSITION_LENGTH = 120
 const MAX_NAME_PART_LENGTH = 80
-const MAX_AVATAR_DATA_URL_LENGTH = 450000
+const MAX_AVATAR_DATA_URL_LENGTH = 7_000_000
 const MAX_TEXT_LENGTH = 1000
 const MIN_HOBBIES = 6
-const MAX_HOBBIES = 30
 const ALLOWED_AVATAR_MIME = ['jpeg', 'jpg', 'png', 'webp', 'gif']
 
 function isValidAvatarValue(value) {
@@ -284,7 +283,7 @@ router.put('/:id', verifyJWT, async (req, res) => {
     }
   }
   if (normalizedAvatar !== undefined && !isValidAvatarValue(normalizedAvatar)) {
-    return res.status(400).json({ error: 'avatar_url должен быть data:image/jpeg|png|webp|gif (до 338KB) или http/https URL' })
+    return res.status(400).json({ error: 'avatar_url должен быть data:image/jpeg|png|webp|gif (до 5MB) или http/https URL' })
   }
   if (![about_short, work_details, current_interests, last_movies, last_books, last_songs].every(isValidLongText)) {
     return res.status(400).json({ error: `Текстовые поля анкеты должны быть не длиннее ${MAX_TEXT_LENGTH} символов` })
@@ -374,9 +373,6 @@ router.put('/:id', verifyJWT, async (req, res) => {
   if (Array.isArray(hobbyIds)) {
     if (hobbyIds.length < MIN_HOBBIES) {
       return res.status(400).json({ error: `Выберите минимум ${MIN_HOBBIES} интересов` })
-    }
-    if (hobbyIds.length > MAX_HOBBIES) {
-      return res.status(400).json({ error: `Нельзя выбрать более ${MAX_HOBBIES} интересов` })
     }
     db.prepare('DELETE FROM user_hobbies WHERE user_id = ?').run(req.user.id)
     const insert = db.prepare('INSERT OR IGNORE INTO user_hobbies (user_id, hobby_id) VALUES (?, ?)')

@@ -11,6 +11,7 @@ const reactionsLimiter = rateLimit({
   max: 30,
   standardHeaders: true,
   legacyHeaders: false,
+  keyGenerator: (req) => req.user?.id ?? req.ip,
   message: { error: 'Слишком много реакций. Подождите немного.' },
 })
 

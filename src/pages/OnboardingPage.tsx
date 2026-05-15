@@ -8,8 +8,8 @@ import { assignBadge, BADGES } from '@/data/badges'
 import { BASE_COLORS, BOOK_GENRES, FILM_GENRES, MUSIC_GENRES, ZODIAC_SIGNS } from '@/data/profileOptions'
 
 type Step = 1 | 2 | 3 | 4
-const MAX_AVATAR_SIDE = 256
-const MAX_AVATAR_BYTES = 300 * 1024
+const MAX_AVATAR_SIDE = 512
+const MAX_AVATAR_BYTES = 5 * 1024 * 1024
 const MIN_HOBBIES = 6
 
 const MONTHS_RU = [
