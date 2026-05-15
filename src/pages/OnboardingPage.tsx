@@ -75,6 +75,7 @@ export default function OnboardingPage() {
   const [allHobbies, setAllHobbies] = useState<ApiHobby[]>([])
   const [departments, setDepartments] = useState<ApiDepartment[]>([])
   const [saving, setSaving] = useState(false)
+  const savingRef = useRef(false)
   const [avatarError, setAvatarError] = useState('')
   const [notice, setNotice] = useState('')
 
@@ -157,7 +158,8 @@ export default function OnboardingPage() {
   }
 
   async function handleFinish() {
-    if (!currentUser) return
+    if (!currentUser || savingRef.current) return
+    savingRef.current = true
     setSaving(true)
     try {
       const effectiveColor = favColor === 'custom' ? customColor : favColor
@@ -198,6 +200,7 @@ export default function OnboardingPage() {
     } catch (err) {
       setNotice(err instanceof Error ? `Ошибка сохранения: ${err.message}` : 'Ошибка сохранения. Попробуйте снова.')
     } finally {
+      savingRef.current = false
       setSaving(false)
     }
   }

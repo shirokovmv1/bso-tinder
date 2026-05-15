@@ -1188,7 +1188,7 @@ export default function AdminPage() {
   const navigate = useNavigate()
 
   return (
-    <div className="min-h-screen px-4 py-8" style={{ background: 'var(--bg-page)' }}>
+    <div className="h-screen overflow-y-auto px-4 py-8" style={{ background: 'var(--bg-page)' }}>
       <div className="max-w-lg mx-auto flex flex-col gap-6">
 
         <motion.div initial={{ opacity: 0, y: -12 }} animate={{ opacity: 1, y: 0 }} className="flex flex-col gap-1">

@@ -101,7 +101,7 @@ export default function MatchPage() {
   }
 
   return (
-    <div className="min-h-full flex flex-col bg-radial-orange overflow-y-auto scrollbar-none pb-28">
+    <div className="h-screen flex flex-col bg-radial-orange overflow-y-auto scrollbar-none pb-28">
       <div className="mx-auto w-full max-w-[460px] px-3 pt-8 flex-1">
         <header className="text-center mb-4 fade-up">
           <div className="mx-auto mb-2 h-[52px] w-[52px] rounded-2xl bg-orange-500 flex items-center justify-center shadow-cta">

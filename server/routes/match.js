@@ -111,8 +111,8 @@ function computeOfflineMatch(a, b) {
   const aIds = new Set(aHobbies.map(h => h.id))
   const shared = aHobbies.filter(h => bIds.has(h.id))
 
-  const maxHobbyCount = Math.max(aHobbies.length, bHobbies.length, 1)
-  const hobbyScore = Math.min(75, Math.round((shared.length / maxHobbyCount) * 75))
+  const minHobbyCount = Math.max(Math.min(aHobbies.length, bHobbies.length), 1)
+  const hobbyScore = Math.min(75, Math.round((shared.length / minHobbyCount) * 75))
 
   const aParents = new Set(aHobbies.map(h => h.parent_id).filter(Boolean))
   const bParents = new Set(bHobbies.map(h => h.parent_id).filter(Boolean))
