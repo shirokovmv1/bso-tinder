@@ -71,6 +71,7 @@ export const api = {
   updateMe:  (id: string, body: Partial<ApiUser> & { hobbyIds?: string[] }) =>
     request<any>(`/users/${id}`, { method: 'PUT', body: JSON.stringify(body) }).then(normalizeUser),
   getHobbies: () => request<ApiHobby[]>('/users/hobbies/all'),
+  generateMyPitch: () => request<{ pitch: string }>('/users/me/pitch', { method: 'POST' }),
   getHealth:  () => request<{ status: string; db?: string; env?: string; error?: string }>('/health'),
 
   // Departments (public)
@@ -81,6 +82,10 @@ export const api = {
     request<ApiMatchResult>('/match', { method: 'POST', body: JSON.stringify({ userAId, userBId }) }),
   computeMyMatches: () =>
     request<ApiDepartmentMatchResponse>('/match/me', { method: 'POST' }),
+  getAiMatch: (userBId: string) =>
+    request<{ score: number; description: string; icebreaker: string }>('/match/ai', {
+      method: 'POST', body: JSON.stringify({ userBId }),
+    }),
 
   // ── Admin: Users ──────────────────────────────────────────────────────────
   adminUsers:       () => request<any[]>('/admin/users').then((rows) => rows.map(normalizeUser)),
@@ -243,7 +248,7 @@ export interface ApiMatchResult {
 }
 
 export interface ApiMatchedUser {
-  user: Pick<ApiUser, 'id' | 'name' | 'department' | 'position' | 'avatar_url' | 'badge_id' | 'badge_title' | 'badge_emoji' | 'pitch'>
+  user: Pick<ApiUser, 'id' | 'name' | 'department' | 'position' | 'avatar_url' | 'badge_id' | 'badge_title' | 'badge_emoji' | 'pitch' | 'about_short' | 'work_details' | 'current_interests'>
   score: number
   level: { id: string; label: string }
   pitch: string

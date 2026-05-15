@@ -10,14 +10,23 @@ const ai = require('../ai')
 const HOBBY_FIELDS = 'h.id, h.parent_id, h.label, h.emoji, h.sort_order, h.is_active'
 const MIN_NAME_LENGTH = 2
 const MAX_DEPARTMENT_LENGTH = 80
+const MAX_POSITION_LENGTH = 120
+const MAX_NAME_PART_LENGTH = 80
 const MAX_AVATAR_DATA_URL_LENGTH = 450000
 const MAX_TEXT_LENGTH = 1000
+const MIN_HOBBIES = 6
+const MAX_HOBBIES = 30
+const ALLOWED_AVATAR_MIME = ['jpeg', 'jpg', 'png', 'webp', 'gif']
 
 function isValidAvatarValue(value) {
   if (typeof value !== 'string') return false
   const trimmed = value.trim()
   if (!trimmed) return true
-  if (trimmed.startsWith('data:image/')) return trimmed.length <= MAX_AVATAR_DATA_URL_LENGTH
+  if (trimmed.startsWith('data:image/')) {
+    const mime = trimmed.slice('data:image/'.length).split(/[;,]/)[0].toLowerCase()
+    if (!ALLOWED_AVATAR_MIME.includes(mime)) return false
+    return trimmed.length <= MAX_AVATAR_DATA_URL_LENGTH
+  }
   if (trimmed.startsWith('http://') || trimmed.startsWith('https://')) return trimmed.length <= 2048
   return false
 }
@@ -275,7 +284,7 @@ router.put('/:id', verifyJWT, async (req, res) => {
     }
   }
   if (normalizedAvatar !== undefined && !isValidAvatarValue(normalizedAvatar)) {
-    return res.status(400).json({ error: 'avatar_url должен быть data:image/* (до 300KB) или http/https URL' })
+    return res.status(400).json({ error: 'avatar_url должен быть data:image/jpeg|png|webp|gif (до 338KB) или http/https URL' })
   }
   if (![about_short, work_details, current_interests, last_movies, last_books, last_songs].every(isValidLongText)) {
     return res.status(400).json({ error: `Текстовые поля анкеты должны быть не длиннее ${MAX_TEXT_LENGTH} символов` })
@@ -288,6 +297,21 @@ router.put('/:id', verifyJWT, async (req, res) => {
   }
   if (birthday_month !== undefined && birthday_month !== null && (!Number.isInteger(Number(birthday_month)) || Number(birthday_month) < 1 || Number(birthday_month) > 12)) {
     return res.status(400).json({ error: 'birthday_month должен быть числом 1..12' })
+  }
+  if (gender !== undefined && gender !== null && !['m', 'f'].includes(gender)) {
+    return res.status(400).json({ error: 'gender должен быть "m" или "f"' })
+  }
+  if (experience_months !== undefined && experience_months !== null) {
+    const exp = Number(experience_months)
+    if (!Number.isInteger(exp) || exp < 0 || exp > 600) {
+      return res.status(400).json({ error: 'experience_months должен быть целым числом 0..600' })
+    }
+  }
+  if (position !== undefined && position !== null && String(position).trim().length > MAX_POSITION_LENGTH) {
+    return res.status(400).json({ error: `position должен быть не длиннее ${MAX_POSITION_LENGTH} символов` })
+  }
+  if (middle_name !== undefined && middle_name !== null && String(middle_name).trim().length > MAX_NAME_PART_LENGTH) {
+    return res.status(400).json({ error: `middle_name должен быть не длиннее ${MAX_NAME_PART_LENGTH} символов` })
   }
 
   if (name !== undefined || department !== undefined || normalizedAvatar !== undefined ||
@@ -348,6 +372,12 @@ router.put('/:id', verifyJWT, async (req, res) => {
   }
 
   if (Array.isArray(hobbyIds)) {
+    if (hobbyIds.length < MIN_HOBBIES) {
+      return res.status(400).json({ error: `Выберите минимум ${MIN_HOBBIES} интересов` })
+    }
+    if (hobbyIds.length > MAX_HOBBIES) {
+      return res.status(400).json({ error: `Нельзя выбрать более ${MAX_HOBBIES} интересов` })
+    }
     db.prepare('DELETE FROM user_hobbies WHERE user_id = ?').run(req.user.id)
     const insert = db.prepare('INSERT OR IGNORE INTO user_hobbies (user_id, hobby_id) VALUES (?, ?)')
     db.transaction((ids) => {
@@ -378,13 +408,91 @@ router.put('/:id', verifyJWT, async (req, res) => {
       if (!final) return
       db.prepare(
         'UPDATE users SET pitch=?, badge_title=?, badge_emoji=?, badge_reason=? WHERE id=?'
-      ).run(final.pitch, final.badge_title, final.badge_emoji, final.badge_reason, req.user.id)
+      ).run(
+        String(final.pitch ?? '').slice(0, 500),
+        String(final.badge_title ?? '').slice(0, 100),
+        String(final.badge_emoji ?? '').slice(0, 20),
+        String(final.badge_reason ?? '').slice(0, 200),
+        req.user.id
+      )
       logger.info('pitch saved', { userId: req.user.id, source: result ? 'llm' : 'template' })
     }).catch(e => logger.error('AI pitch save failed', { error: e.message }))
   }
 
   logger.info('User profile updated', { userId: req.user.id })
   res.json({ ...updated, hobbies: getUserHobbies(req.user.id) })
+})
+
+// POST /api/users/me/pitch — AI генерирует персональный питч от первого лица
+router.post('/me/pitch', verifyJWT, async (req, res) => {
+  const user = db.prepare(`
+    SELECT id, name, last_name, first_name, department, position, experience_months,
+           about_short, work_details, current_interests, gender
+    FROM users WHERE id = ? AND is_banned = 0
+  `).get(req.user.id)
+  if (!user) return res.status(404).json({ error: 'Пользователь не найден' })
+
+  const hobbies = getUserHobbies(req.user.id).map(h => h.label)
+  const displayName = [user.last_name, user.first_name].filter(Boolean).join(' ') || user.name || ''
+  const expStr = user.experience_months ? `${user.experience_months} мес.` : null
+
+  const cfg = db.prepare("SELECT key, value FROM settings WHERE key LIKE 'llm_%'").all()
+  const llm = Object.fromEntries(cfg.map(r => [r.key, r.value]))
+
+  if (!llm.llm_api_key || !llm.llm_model) {
+    return res.status(503).json({ error: 'AI недоступен — не настроен LLM' })
+  }
+
+  const prompt = `Ты помогаешь сотруднику написать личный питч для корпоративного нетворкинга. Пиши от первого лица, тепло и живо.
+
+Данные:
+- Имя: ${displayName || '—'}
+- Отдел: ${user.department || '—'}
+- Должность: ${user.position || '—'}
+- Стаж: ${expStr || '—'}
+- О себе: ${user.about_short || '—'}
+- Моя страсть / проекты: ${user.work_details || '—'}
+- Сейчас увлечён(а): ${user.current_interests || '—'}
+- Интересы: ${hobbies.join(', ') || '—'}
+
+Напиши питч: 4-6 предложений от первого лица. Начни с "Привет! Я [имя]." Упомяни чем занимаешься, что тебя зажигает и зачем пришёл на мероприятие. Без канцелярщины и корпоративного новояза.
+
+Верни только текст питча, без JSON, без markdown.`
+
+  try {
+    const provider = llm.llm_provider || 'openai'
+    const baseUrl = llm.llm_base_url?.replace(/\/$/, '')
+    let text
+
+    if (provider === 'anthropic') {
+      const url = baseUrl ? `${baseUrl}/v1/messages` : 'https://api.anthropic.com/v1/messages'
+      const r = await fetch(url, {
+        method: 'POST',
+        headers: { 'x-api-key': llm.llm_api_key, 'anthropic-version': '2023-06-01', 'content-type': 'application/json' },
+        body: JSON.stringify({ model: llm.llm_model, max_tokens: 512, messages: [{ role: 'user', content: prompt }] }),
+      })
+      if (!r.ok) throw new Error(`Anthropic ${r.status}`)
+      text = (await r.json()).content?.[0]?.text
+    } else {
+      const url = baseUrl
+        ? `${baseUrl}/v1/chat/completions`
+        : provider === 'cursor' ? 'https://api.cursor.sh/v1/chat/completions' : 'https://api.openai.com/v1/chat/completions'
+      const r = await fetch(url, {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${llm.llm_api_key}`, 'content-type': 'application/json' },
+        body: JSON.stringify({ model: llm.llm_model, max_tokens: 512, messages: [{ role: 'user', content: prompt }] }),
+      })
+      if (!r.ok) throw new Error(`${provider} ${r.status}`)
+      text = (await r.json()).choices?.[0]?.message?.content
+    }
+
+    if (!text) throw new Error('Пустой ответ от модели')
+    logger.info('User pitch generated', { userId: req.user.id })
+    res.json({ pitch: text.trim() })
+  } catch (e) {
+    logger.error('User pitch failed', { error: e.message })
+    res.status(503).json({ error: 'AI недоступен' })
+  }
 })
 
 module.exports = router

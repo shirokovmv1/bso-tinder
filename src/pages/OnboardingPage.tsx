@@ -581,6 +581,31 @@ function BadgeReveal() {
   const badgeId = currentUser?.badge_id ?? 'allrounder'
   const badge = BADGES.find(b => b.id === badgeId) ?? BADGES[BADGES.length - 1]
 
+  const [pitchText, setPitchText] = useState('')
+  const [pitchLoading, setPitchLoading] = useState(false)
+  const [pitchError, setPitchError] = useState('')
+  const [copied, setCopied] = useState(false)
+
+  async function handleGeneratePitch() {
+    setPitchLoading(true)
+    setPitchError('')
+    try {
+      const result = await api.generateMyPitch()
+      setPitchText(result.pitch)
+    } catch {
+      setPitchError('AI недоступен, попробуйте позже')
+    } finally {
+      setPitchLoading(false)
+    }
+  }
+
+  function handleCopy() {
+    navigator.clipboard.writeText(pitchText).then(() => {
+      setCopied(true)
+      setTimeout(() => setCopied(false), 2000)
+    })
+  }
+
   return (
     <div className="flex flex-col items-center text-center gap-6 w-full">
       <motion.div
@@ -596,7 +621,41 @@ function BadgeReveal() {
         <h2 className="text-[28px] font-black tracking-tight">{badge.title}</h2>
         <p className="text-white/60 mt-2 text-[15px]">{badge.description}</p>
       </motion.div>
-      <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.9 }} className="w-full">
+
+      <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.9 }} className="w-full space-y-3">
+        {!pitchText && (
+          <button
+            onClick={handleGeneratePitch}
+            disabled={pitchLoading}
+            className="w-full py-3 rounded-2xl text-[15px] font-bold border border-orange-500/40 bg-orange-500/15 text-orange-200 hover:bg-orange-500/25 transition-all disabled:opacity-60"
+          >
+            {pitchLoading ? '⏳ Генерируем...' : '✍️ Обо мне'}
+          </button>
+        )}
+        {!!pitchError && <p className="text-[13px] text-red-400">{pitchError}</p>}
+
+        {!!pitchText && (
+          <div className="rounded-2xl border border-white/10 bg-white/[0.05] p-4 text-left">
+            <div className="flex items-center justify-between mb-2">
+              <div className="text-[10px] font-black uppercase tracking-[0.12em] text-white/40">Ваш питч</div>
+              <button
+                onClick={handleCopy}
+                className="text-[12px] font-bold text-orange-300 hover:text-orange-200 transition-colors"
+              >
+                {copied ? '✓ Скопировано' : 'Скопировать'}
+              </button>
+            </div>
+            <p className="text-[14px] font-semibold text-white/80 leading-relaxed">{pitchText}</p>
+            <button
+              onClick={handleGeneratePitch}
+              disabled={pitchLoading}
+              className="mt-3 text-[12px] font-bold text-white/40 hover:text-white/60 transition-colors disabled:opacity-60"
+            >
+              {pitchLoading ? 'Генерируем...' : '↺ Другой вариант'}
+            </button>
+          </div>
+        )}
+
         <button
           onClick={() => navigate('/match', { replace: true })}
           className="cta-orange w-full py-4 text-[16px] font-extrabold"

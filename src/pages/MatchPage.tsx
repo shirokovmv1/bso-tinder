@@ -54,10 +54,7 @@ export default function MatchPage() {
     stopTimer()
     timerRef.current = setInterval(() => setElapsed(s => s + 1), 1000)
     try {
-      const [result] = await Promise.all([
-        api.computeMyMatches(),
-        new Promise<void>(r => setTimeout(r, 10_000)),
-      ])
+      const result = await api.computeMyMatches()
       setGroups(result.groups)
       setEmptyMessage(result.emptyMessage)
       const firstGroup = result.groups[0]
@@ -220,6 +217,36 @@ function MatchCard({ match, selected, reactionTypes, pendingReaction, onSelect, 
   onSelect: () => void
   onReact: (reactionTypeId: string) => void
 }) {
+  const [aiLoading, setAiLoading] = useState(false)
+  const [aiPitch, setAiPitch] = useState<string | null>(null)
+  const [aiIcebreaker, setAiIcebreaker] = useState<string | null>(null)
+  const [aiError, setAiError] = useState('')
+  const [copied, setCopied] = useState(false)
+
+  const icebreaker = aiIcebreaker ?? match.icebreaker
+  const pitch = aiPitch ?? match.pitch
+
+  async function handleAiMatch() {
+    setAiLoading(true)
+    setAiError('')
+    try {
+      const result = await api.getAiMatch(match.user.id)
+      setAiPitch(result.description)
+      setAiIcebreaker(result.icebreaker)
+    } catch {
+      setAiError('AI недоступен, попробуйте позже')
+    } finally {
+      setAiLoading(false)
+    }
+  }
+
+  function handleCopyPitch() {
+    navigator.clipboard.writeText(pitch).then(() => {
+      setCopied(true)
+      setTimeout(() => setCopied(false), 2000)
+    })
+  }
+
   return (
     <div className="glass-1 rounded-2xl p-4 shadow-card">
       <button onClick={onSelect} className="w-full flex items-center gap-3 text-left">
@@ -237,14 +264,14 @@ function MatchCard({ match, selected, reactionTypes, pendingReaction, onSelect, 
           <div className="mt-1 flex items-center gap-2">
             <span className="text-[12px] font-black text-orange-300">{match.score}%</span>
             <span className="text-[12px] font-bold text-white/55">{match.level.label}</span>
-            {match.aiEnhanced && <span className="text-[12px]" title="AI-улучшено">✨</span>}
+            {(match.aiEnhanced || aiPitch) && <span className="text-[12px]" title="AI-улучшено">✨</span>}
           </div>
         </div>
         <span className="text-white/30 text-2xl font-black shrink-0">{selected ? '⌃' : '›'}</span>
       </button>
 
       <div className="mt-3 text-[13px] font-semibold text-white/65 leading-relaxed">
-        {match.pitch}
+        {pitch}
       </div>
 
       <div className="mt-3 flex flex-wrap gap-2">
@@ -263,15 +290,34 @@ function MatchCard({ match, selected, reactionTypes, pendingReaction, onSelect, 
             exit={{ opacity: 0, height: 0 }}
             className="overflow-hidden"
           >
-            <div className="pt-4 mt-4 border-t border-white/10">
-              {!!match.icebreaker && (
-                <div className="mb-3 rounded-xl px-3 py-2 bg-orange-500/10 border border-orange-500/20">
+            <div className="pt-4 mt-4 border-t border-white/10 space-y-3">
+
+              {/* Icebreaker */}
+              {!!icebreaker && (
+                <div className="rounded-xl px-3 py-2 bg-orange-500/10 border border-orange-500/20">
                   <div className="text-[10px] font-black uppercase tracking-[0.12em] text-orange-300/70">Повод для разговора</div>
-                  <div className="text-[13px] font-semibold text-white/80 mt-0.5">{match.icebreaker}</div>
+                  <div className="text-[13px] font-semibold text-white/80 mt-0.5">{icebreaker}</div>
                 </div>
               )}
+
+              {/* Кнопка AI-мэтч */}
+              {!aiPitch && (
+                <div>
+                  <button
+                    onClick={handleAiMatch}
+                    disabled={aiLoading}
+                    className="flex items-center gap-2 px-4 py-2 rounded-full text-[13px] font-bold bg-orange-500/20 border border-orange-500/40 text-orange-200 hover:bg-orange-500/30 transition-all disabled:opacity-60"
+                  >
+                    <span>{aiLoading ? '⏳' : '✨'}</span>
+                    <span>{aiLoading ? 'Анализируем...' : 'Полный мэтч'}</span>
+                  </button>
+                  {!!aiError && <p className="mt-1 text-[12px] text-red-400">{aiError}</p>}
+                </div>
+              )}
+
+              {/* Бейдж */}
               {!!match.user.badge_title && (
-                <div className="mb-3 rounded-xl px-3 py-2 bg-white/5 border border-white/10">
+                <div className="rounded-xl px-3 py-2 bg-white/5 border border-white/10">
                   <div className="text-[10px] font-black uppercase tracking-[0.12em] text-white/40">Бейдж</div>
                   <div className="text-[14px] font-bold text-white/80">
                     <span className="mr-1">{match.user.badge_emoji}</span>{match.user.badge_title}
@@ -279,26 +325,66 @@ function MatchCard({ match, selected, reactionTypes, pendingReaction, onSelect, 
                 </div>
               )}
 
-              <div className="text-[10px] font-black uppercase tracking-[0.12em] text-white/40 mb-2">
-                Отметить анкету
-              </div>
-              <div className="flex gap-2 flex-wrap">
-                {reactionTypes.map(rt => {
-                  const key = `${match.user.id}:${rt.id}`
-                  const isPending = pendingReaction === key
-                  return (
+              {/* Профиль — полное раскрытие */}
+              {!!match.user.about_short && (
+                <div className="rounded-xl px-3 py-2 bg-white/5 border border-white/10">
+                  <div className="text-[10px] font-black uppercase tracking-[0.12em] text-white/40 mb-1">Моя суперсила</div>
+                  <p className="text-[13px] font-semibold text-white/75 leading-relaxed">{match.user.about_short}</p>
+                </div>
+              )}
+
+              {!!match.user.work_details && (
+                <div className="rounded-xl px-3 py-2 bg-white/5 border border-white/10">
+                  <div className="text-[10px] font-black uppercase tracking-[0.12em] text-white/40 mb-1">Моя страсть</div>
+                  <p className="text-[13px] font-semibold text-white/75 leading-relaxed">{match.user.work_details}</p>
+                </div>
+              )}
+
+              {!!match.user.current_interests && (
+                <div className="rounded-xl px-3 py-2 bg-white/5 border border-white/10">
+                  <div className="text-[10px] font-black uppercase tracking-[0.12em] text-white/40 mb-1">Сейчас увлечён(а)</div>
+                  <p className="text-[13px] font-semibold text-white/75 leading-relaxed">{match.user.current_interests}</p>
+                </div>
+              )}
+
+              {/* Питч с кнопкой копировать */}
+              {!!match.user.pitch && (
+                <div className="rounded-xl px-3 py-2 bg-white/5 border border-white/10">
+                  <div className="flex items-center justify-between mb-1">
+                    <div className="text-[10px] font-black uppercase tracking-[0.12em] text-white/40">Питч</div>
                     <button
-                      key={rt.id}
-                      disabled={isPending}
-                      onClick={() => onReact(rt.id)}
-                      className="flex items-center gap-1.5 px-3 py-2 rounded-full text-sm font-bold transition-all border glass-1 border-white/10 text-white/75 hover:bg-white/10 disabled:opacity-60"
+                      onClick={handleCopyPitch}
+                      className="text-[11px] font-bold text-white/40 hover:text-white/70 transition-colors"
                     >
-                      <span>{rt.emoji}</span>
-                      <span className="text-[12px]">{isPending ? '...' : rt.label}</span>
+                      {copied ? '✓ Скопировано' : 'Копировать'}
                     </button>
-                  )
-                })}
+                  </div>
+                  <p className="text-[13px] font-semibold text-white/75 leading-relaxed">{match.user.pitch}</p>
+                </div>
+              )}
+
+              {/* Реакции */}
+              <div>
+                <div className="text-[10px] font-black uppercase tracking-[0.12em] text-white/40 mb-2">Отметить анкету</div>
+                <div className="flex gap-2 flex-wrap">
+                  {reactionTypes.map(rt => {
+                    const key = `${match.user.id}:${rt.id}`
+                    const isPending = pendingReaction === key
+                    return (
+                      <button
+                        key={rt.id}
+                        disabled={isPending}
+                        onClick={() => onReact(rt.id)}
+                        className="flex items-center gap-1.5 px-3 py-2 rounded-full text-sm font-bold transition-all border glass-1 border-white/10 text-white/75 hover:bg-white/10 disabled:opacity-60"
+                      >
+                        <span>{rt.emoji}</span>
+                        <span className="text-[12px]">{isPending ? '...' : rt.label}</span>
+                      </button>
+                    )
+                  })}
+                </div>
               </div>
+
             </div>
           </motion.div>
         )}

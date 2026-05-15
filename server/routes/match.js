@@ -5,6 +5,7 @@ const { verifyJWT } = require('../middleware/auth')
 const db = require('../db')
 const logger = require('../logger')
 const { generateMatch } = require('../ai')
+const MAX_MATCH_RESULTS = 50
 
 const ICEBREAKERS = {
   high: [
@@ -242,8 +243,20 @@ router.post('/', verifyJWT, (req, res) => {
   })
 })
 
+// POST /api/match/ai — AI-улучшение конкретного матча по запросу
+router.post('/ai', verifyJWT, async (req, res) => {
+  const { userBId } = req.body
+  if (!userBId) return res.status(400).json({ error: 'Передайте userBId' })
+  const userA = getUserWithHobbies(req.user.id)
+  const userB = getUserWithHobbies(userBId)
+  if (!userA || !userB) return res.status(404).json({ error: 'Пользователь не найден' })
+  const result = await generateMatch(userA, userB)
+  if (!result) return res.status(503).json({ error: 'AI недоступен' })
+  res.json(result)
+})
+
 // POST /api/match/me — пересчитать текущие совпадения без сохранения результата
-router.post('/me', verifyJWT, async (req, res) => {
+router.post('/me', verifyJWT, (req, res) => {
   const currentUser = getUserWithHobbies(req.user.id)
   if (!currentUser) return res.status(404).json({ error: 'Пользователь не найден' })
 
@@ -253,13 +266,12 @@ router.post('/me', verifyJWT, async (req, res) => {
     WHERE id != ? AND is_banned = 0 AND is_admin = 0 AND onboarding_done = 1
   `).all(req.user.id)
 
-  const localMatches = candidates
+  const matches = candidates
     .map(row => getUserWithHobbies(row.id))
     .filter(Boolean)
     .map(user => {
       const result = computeOfflineMatch(currentUser, user)
       return {
-        _user: user,
         user: {
           id: user.id,
           name: [user.last_name, user.first_name].filter(Boolean).join(' ') || user.name || user.email,
@@ -270,6 +282,9 @@ router.post('/me', verifyJWT, async (req, res) => {
           badge_title: user.badge_title,
           badge_emoji: user.badge_emoji,
           pitch: user.pitch,
+          about_short: user.about_short,
+          work_details: user.work_details,
+          current_interests: user.current_interests,
         },
         score: result.score,
         level: result.level,
@@ -279,28 +294,9 @@ router.post('/me', verifyJWT, async (req, res) => {
     })
     .filter(match => match.score >= 50)
     .sort((a, b) => b.score - a.score)
+    .slice(0, MAX_MATCH_RESULTS)
 
-  // AI-улучшение для топ-3 (если ключ настроен — generateMatch вернёт null без ключа)
-  const TOP_AI = 3
-  const aiResults = await Promise.allSettled(
-    localMatches.slice(0, TOP_AI).map(m => generateMatch(currentUser, m._user))
-  )
-
-  const matches = localMatches.map((m, i) => {
-    const aiResult = i < TOP_AI ? (aiResults[i].status === 'fulfilled' ? aiResults[i].value : null) : null
-    const { _user, ...rest } = m
-    return {
-      ...rest,
-      ...(aiResult ? {
-        score: aiResult.score ?? rest.score,
-        pitch: aiResult.description || rest.pitch,
-        icebreaker: aiResult.icebreaker,
-        aiEnhanced: true,
-      } : {}),
-    }
-  })
-
-  logger.info('Matches computed', { userId: req.user.id, count: matches.length, aiEnhanced: Math.min(TOP_AI, localMatches.length) })
+  logger.info('Matches computed', { userId: req.user.id, count: matches.length })
   res.json({
     groups: groupMatchesByDepartment(matches),
     total: matches.length,
