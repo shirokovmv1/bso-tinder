@@ -130,7 +130,7 @@ export default function MatchPage() {
             className="match-cta-btn"
             aria-label="Запустить подбор"
           >
-            {loading ? 'Ищем' : 'Метч'}
+            {loading ? 'Ищем...' : 'МЭТЧ'}
           </button>
         </div>
 
@@ -139,6 +139,7 @@ export default function MatchPage() {
             segments={segments}
             loading={loading}
             elapsedSeconds={elapsed}
+            activeSegmentId={selectedDepartment}
             onSegmentClick={(segment) => {
               if (segment.count <= 0) return
               setSelectedDepartment(segment.label)
