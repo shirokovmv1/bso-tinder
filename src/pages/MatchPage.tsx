@@ -54,7 +54,10 @@ export default function MatchPage() {
     stopTimer()
     timerRef.current = setInterval(() => setElapsed(s => s + 1), 1000)
     try {
-      const result = await api.computeMyMatches()
+      const [result] = await Promise.all([
+        api.computeMyMatches(),
+        new Promise<void>(r => setTimeout(r, 10_000)),
+      ])
       setGroups(result.groups)
       setEmptyMessage(result.emptyMessage)
       const firstGroup = result.groups[0]

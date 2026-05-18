@@ -584,6 +584,7 @@ function BadgeReveal() {
   const [pitchText, setPitchText] = useState('')
   const [pitchLoading, setPitchLoading] = useState(false)
   const [pitchError, setPitchError] = useState('')
+  const [retryCount, setRetryCount] = useState(0)
   const [copied, setCopied] = useState(false)
 
   async function handleGeneratePitch() {
@@ -592,6 +593,7 @@ function BadgeReveal() {
     try {
       const result = await api.generateMyPitch()
       setPitchText(result.pitch)
+      setRetryCount(c => c + 1)
     } catch {
       setPitchError('AI недоступен, попробуйте позже')
     } finally {
@@ -646,13 +648,15 @@ function BadgeReveal() {
               </button>
             </div>
             <p className="text-[14px] font-semibold text-white/80 leading-relaxed">{pitchText}</p>
-            <button
-              onClick={handleGeneratePitch}
-              disabled={pitchLoading}
-              className="mt-3 text-[12px] font-bold text-white/40 hover:text-white/60 transition-colors disabled:opacity-60"
-            >
-              {pitchLoading ? 'Генерируем...' : '↺ Другой вариант'}
-            </button>
+            {retryCount < 3 && (
+              <button
+                onClick={handleGeneratePitch}
+                disabled={pitchLoading}
+                className="mt-3 text-[12px] font-bold text-white/40 hover:text-white/60 transition-colors disabled:opacity-60"
+              >
+                {pitchLoading ? 'Генерируем...' : '↺ Другой вариант'}
+              </button>
+            )}
           </div>
         )}
 
