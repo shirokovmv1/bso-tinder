@@ -7,7 +7,7 @@ import { useAppStore } from '@/store/useAppStore'
 import { assignBadge, BADGES } from '@/data/badges'
 import { BASE_COLORS, BOOK_GENRES, FILM_GENRES, MUSIC_GENRES, ZODIAC_SIGNS } from '@/data/profileOptions'
 
-type Step = 1 | 2 | 3 | 4
+type Step = 1 | 2 | 3 | 4 | 5
 const MAX_AVATAR_SIDE = 512
 const MAX_AVATAR_BYTES = 5 * 1024 * 1024
 const MIN_HOBBIES = 6
@@ -389,8 +389,14 @@ export default function OnboardingPage() {
 
           {step === 4 && (
             <motion.div key="badge" initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }} className="flex flex-col items-center pt-8">
-              <BadgeReveal />
+              <BadgeReveal onGoToStep={setStep} />
             </motion.div>
+          )}
+
+          {step === 5 && (
+            <StepPanel key="preview">
+              <ProfilePreview onEdit={() => setStep(1)} />
+            </StepPanel>
           )}
         </AnimatePresence>
       </div>
@@ -575,9 +581,9 @@ function ColorChipGroup({ selected, customColor, onSelect, onCustomChange }: {
   )
 }
 
-function BadgeReveal() {
+function BadgeReveal({ onGoToStep }: { onGoToStep: (step: Step) => void }) {
   const navigate = useNavigate()
-  const currentUser = useAppStore(s => s.currentUser)
+  const { currentUser, setCurrentUser } = useAppStore(s => ({ currentUser: s.currentUser, setCurrentUser: s.setCurrentUser }))
   const badgeId = currentUser?.badge_id ?? 'allrounder'
   const badge = BADGES.find(b => b.id === badgeId) ?? BADGES[BADGES.length - 1]
 
@@ -586,10 +592,13 @@ function BadgeReveal() {
   const [pitchError, setPitchError] = useState('')
   const [retryCount, setRetryCount] = useState(0)
   const [copied, setCopied] = useState(false)
+  const [addedToProfile, setAddedToProfile] = useState(false)
+  const [addingToProfile, setAddingToProfile] = useState(false)
 
   async function handleGeneratePitch() {
     setPitchLoading(true)
     setPitchError('')
+    setAddedToProfile(false)
     try {
       const result = await api.generateMyPitch()
       setPitchText(result.pitch)
@@ -598,6 +607,20 @@ function BadgeReveal() {
       setPitchError('AI недоступен, попробуйте позже')
     } finally {
       setPitchLoading(false)
+    }
+  }
+
+  async function handleAddToProfile() {
+    if (!currentUser || addingToProfile) return
+    setAddingToProfile(true)
+    try {
+      const updated = await api.updateMe(currentUser.id, { pitch: pitchText })
+      setCurrentUser(updated)
+      setAddedToProfile(true)
+    } catch {
+      // silent — pitch save failure is non-critical
+    } finally {
+      setAddingToProfile(false)
     }
   }
 
@@ -640,23 +663,42 @@ function BadgeReveal() {
           <div className="rounded-2xl border border-white/10 bg-white/[0.05] p-4 text-left">
             <div className="flex items-center justify-between mb-2">
               <div className="text-[10px] font-black uppercase tracking-[0.12em] text-white/40">Ваш питч</div>
-              <button
-                onClick={handleCopy}
-                className="text-[12px] font-bold text-orange-300 hover:text-orange-200 transition-colors"
-              >
-                {copied ? '✓ Скопировано' : 'Скопировать'}
-              </button>
+              <div className="flex items-center gap-3">
+                <button
+                  onClick={handleCopy}
+                  className="text-[12px] font-bold text-orange-300 hover:text-orange-200 transition-colors"
+                >
+                  {copied ? '✓ Скопировано' : 'Скопировать'}
+                </button>
+                <button
+                  onClick={handleAddToProfile}
+                  disabled={addingToProfile || addedToProfile}
+                  className="text-[12px] font-bold text-emerald-400 hover:text-emerald-300 transition-colors disabled:opacity-60"
+                >
+                  {addedToProfile ? '✓ Добавлено' : addingToProfile ? '...' : 'В анкету'}
+                </button>
+              </div>
             </div>
             <p className="text-[14px] font-semibold text-white/80 leading-relaxed">{pitchText}</p>
-            {retryCount < 3 && (
-              <button
-                onClick={handleGeneratePitch}
-                disabled={pitchLoading}
-                className="mt-3 text-[12px] font-bold text-white/40 hover:text-white/60 transition-colors disabled:opacity-60"
-              >
-                {pitchLoading ? 'Генерируем...' : '↺ Другой вариант'}
-              </button>
-            )}
+            <div className="mt-3 flex items-center gap-3">
+              {retryCount < 3 && (
+                <button
+                  onClick={handleGeneratePitch}
+                  disabled={pitchLoading}
+                  className="text-[12px] font-bold text-white/40 hover:text-white/60 transition-colors disabled:opacity-60"
+                >
+                  {pitchLoading ? 'Генерируем...' : '↺ Другой вариант'}
+                </button>
+              )}
+              {addedToProfile && (
+                <button
+                  onClick={() => onGoToStep(5)}
+                  className="text-[12px] font-bold text-orange-300 hover:text-orange-200 transition-colors"
+                >
+                  Посмотреть анкету →
+                </button>
+              )}
+            </div>
           </div>
         )}
 
@@ -667,6 +709,98 @@ function BadgeReveal() {
           Делаем Метч 💥
         </button>
       </motion.div>
+    </div>
+  )
+}
+
+function ProfilePreview({ onEdit }: { onEdit: () => void }) {
+  const navigate = useNavigate()
+  const currentUser = useAppStore(s => s.currentUser)
+
+  if (!currentUser) return null
+
+  const badgeId = currentUser.badge_id ?? 'allrounder'
+  const badge = BADGES.find(b => b.id === badgeId) ?? BADGES[BADGES.length - 1]
+  const displayName = [currentUser.last_name, currentUser.first_name].filter(Boolean).join(' ') || currentUser.name || ''
+
+  return (
+    <div className="w-full space-y-4">
+      <div className="text-center mb-2">
+        <div className="text-[11px] font-black uppercase tracking-[0.14em] text-orange-500 mb-1">Предпросмотр анкеты</div>
+        <p className="text-white/50 text-[13px]">Вот как вас увидят коллеги</p>
+      </div>
+
+      {/* Аватар + имя */}
+      <div className="glass-1 rounded-2xl p-4 flex items-center gap-4">
+        <div className="w-16 h-16 rounded-full grid place-items-center text-white font-black text-[22px] shrink-0 border border-white/15 overflow-hidden"
+          style={{ background: 'linear-gradient(135deg,#FF8A33,#FF6B00)' }}>
+          {currentUser.avatar_url && !currentUser.avatar_url.includes('dicebear.com')
+            ? <img src={currentUser.avatar_url} alt="" className="w-full h-full object-cover" />
+            : (displayName[0]?.toUpperCase() || '?')}
+        </div>
+        <div>
+          <div className="font-black text-[18px]">{displayName}</div>
+          <div className="text-[12px] font-bold text-white/50 mt-0.5">
+            {[currentUser.department, currentUser.position].filter(Boolean).join(' · ')}
+          </div>
+          {currentUser.experience_months && (
+            <div className="text-[11px] text-white/35 mt-0.5">Стаж {currentUser.experience_months} мес.</div>
+          )}
+        </div>
+      </div>
+
+      {/* Бейдж */}
+      <div className="glass-1 rounded-2xl px-4 py-3 flex items-center gap-3">
+        <span className="text-3xl">{badge.emoji}</span>
+        <div>
+          <div className="text-[10px] font-black uppercase tracking-[0.1em] text-orange-400">Бейдж</div>
+          <div className="font-black text-[15px]">{badge.title}</div>
+        </div>
+      </div>
+
+      {currentUser.about_short && (
+        <div className="glass-1 rounded-2xl px-4 py-3">
+          <div className="text-[10px] font-black uppercase tracking-[0.1em] text-white/40 mb-1">Моя суперсила</div>
+          <p className="text-[14px] font-semibold text-white/80">{currentUser.about_short}</p>
+        </div>
+      )}
+
+      {currentUser.work_details && (
+        <div className="glass-1 rounded-2xl px-4 py-3">
+          <div className="text-[10px] font-black uppercase tracking-[0.1em] text-white/40 mb-1">Моя страсть</div>
+          <p className="text-[14px] font-semibold text-white/80">{currentUser.work_details}</p>
+        </div>
+      )}
+
+      {currentUser.current_interests && (
+        <div className="glass-1 rounded-2xl px-4 py-3">
+          <div className="text-[10px] font-black uppercase tracking-[0.1em] text-white/40 mb-1">Сейчас увлечён(а)</div>
+          <p className="text-[14px] font-semibold text-white/80">{currentUser.current_interests}</p>
+        </div>
+      )}
+
+      {currentUser.pitch && (
+        <div className="glass-1 rounded-2xl px-4 py-3">
+          <div className="text-[10px] font-black uppercase tracking-[0.1em] text-white/40 mb-1">Питч</div>
+          <p className="text-[14px] font-semibold text-white/80 leading-relaxed">{currentUser.pitch}</p>
+        </div>
+      )}
+
+      {/* Кнопки */}
+      <div className="pt-2 space-y-2">
+        <button
+          onClick={() => navigate('/match', { replace: true })}
+          className="cta-orange w-full py-4 text-[16px] font-extrabold"
+        >
+          Сохранить и делать мэтч 💥
+        </button>
+        <button
+          onClick={onEdit}
+          className="w-full text-[13px] font-bold text-white/40 py-2"
+        >
+          ‹ Редактировать профиль
+        </button>
+      </div>
     </div>
   )
 }

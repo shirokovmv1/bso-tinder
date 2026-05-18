@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { motion } from 'framer-motion'
 
 export interface DonutSegment {
@@ -14,6 +14,7 @@ interface DepartmentDonutProps {
   loading?: boolean
   elapsedSeconds?: number
   activeSegmentId?: string | null
+  revealed?: boolean
 }
 
 // Preset colours — extended with fallback generator
@@ -112,8 +113,19 @@ export default function DepartmentDonut({
   loading = false,
   elapsedSeconds,
   activeSegmentId,
+  revealed = false,
 }: DepartmentDonutProps) {
   const [hoveredId, setHoveredId] = useState<string | null>(null)
+  const [flashDone, setFlashDone] = useState(false)
+
+  useEffect(() => {
+    if (!revealed) {
+      setFlashDone(false)
+      return
+    }
+    const t = setTimeout(() => setFlashDone(true), 1200)
+    return () => clearTimeout(t)
+  }, [revealed])
 
   if (segments.length === 0) return null
 
@@ -134,18 +146,11 @@ export default function DepartmentDonut({
     const dimColor = seg.color.startsWith('#') ? `${seg.color}59` : seg.color
     return { ...seg, path: buildArcPath(startDeg, endDeg), lx, ly, nx, ny, midDeg, labelRotation, labelLines, dimColor }
   })
+  const maxCount = Math.max(...built.map(s => s.count), 1)
 
   return (
     <div className="donut-wrapper" style={{ width: '100%', maxWidth: 340, aspectRatio: '1', margin: '0 auto' }}>
-      <motion.div
-        animate={loading ? { rotate: 360 } : { rotate: 0 }}
-        transition={
-          loading
-            ? { duration: 2, repeat: Infinity, ease: 'linear' }
-            : { duration: 0.3 }
-        }
-        style={{ width: '100%', height: '100%' }}
-      >
+      <div style={{ width: '100%', height: '100%' }}>
         <svg
           viewBox={`0 0 ${VB} ${VB}`}
           style={{ width: '100%', height: '100%', display: 'block' }}
@@ -161,66 +166,93 @@ export default function DepartmentDonut({
             ))}
           </defs>
 
-          {/* Sectors */}
-          {built.map(seg => {
-            const active = seg.count > 0
-            const hovered = hoveredId === seg.id && active
-            const isActive = seg.id === activeSegmentId || seg.label === activeSegmentId
-            const rad = (seg.midDeg * Math.PI) / 180
-            const tx = hovered ? Math.cos(rad - Math.PI / 2) * 6 : 0
-            const ty = hovered ? Math.sin(rad - Math.PI / 2) * 6 : 0
-            return (
-              <g
-                key={seg.id}
-                className={active ? 'donut-sector' : 'donut-sector donut-sector--muted'}
-                role={active ? 'button' : undefined}
-                aria-label={active ? `${seg.label}: ${seg.count} матчей` : seg.label}
-                tabIndex={active ? 0 : undefined}
-                onClick={() => onSegmentClick?.(seg)}
-                onKeyDown={e => e.key === 'Enter' && onSegmentClick?.(seg)}
-                onMouseEnter={() => active && setHoveredId(seg.id)}
-                onMouseLeave={() => setHoveredId(null)}
-                style={{ transform: `translate(${tx}px, ${ty}px)`, transition: 'transform 0.15s' }}
-              >
-                <path
-                  d={seg.path}
-                  fill={active ? `url(#grad-${seg.id})` : seg.dimColor}
-                  stroke="rgba(0,0,0,0.22)"
-                  strokeWidth="1.5"
-                  style={{
-                    transition: 'opacity .15s, filter .15s',
-                    filter: hovered
-                      ? `drop-shadow(0 0 12px ${seg.color})`
-                      : isActive
-                        ? `drop-shadow(0 0 8px ${seg.color}99)`
-                        : 'none',
-                    opacity: hovered ? 0.88 : 1,
-                  }}
-                />
-
-                <text
-                  x={seg.lx} y={seg.ly}
-                  textAnchor="middle" dominantBaseline="middle"
-                  fill={active ? 'rgba(255,255,255,0.93)' : 'rgba(255,255,255,0.35)'}
-                  fontSize={seg.labelLines.length > 1 ? '8.4' : '9.2'}
-                  fontWeight="850"
-                  fontFamily="Manrope, system-ui, sans-serif"
-                  transform={`rotate(${seg.labelRotation} ${seg.lx} ${seg.ly})`}
-                  style={{ pointerEvents: 'none', userSelect: 'none', letterSpacing: 0 }}
+          <motion.g
+            animate={loading ? { rotate: 360 } : { rotate: 0 }}
+            transition={
+              loading
+                ? { duration: 2, repeat: Infinity, ease: 'linear' }
+                : { duration: 0.3 }
+            }
+            style={{ transformOrigin: `${CX}px ${CY}px` }}
+          >
+            {/* Sectors */}
+            {built.map(seg => {
+              const active = seg.count > 0
+              const hovered = hoveredId === seg.id && active
+              const isActive = seg.id === activeSegmentId || seg.label === activeSegmentId
+              const rad = (seg.midDeg * Math.PI) / 180
+              const tx = hovered ? Math.cos(rad - Math.PI / 2) * 6 : 0
+              const ty = hovered ? Math.sin(rad - Math.PI / 2) * 6 : 0
+              const intensity = seg.count / maxCount
+              return (
+                <g
+                  key={seg.id}
+                  className={active ? 'donut-sector' : 'donut-sector donut-sector--muted'}
+                  role={active ? 'button' : undefined}
+                  aria-label={active ? `${seg.label}: ${seg.count} матчей` : seg.label}
+                  tabIndex={active ? 0 : undefined}
+                  onClick={() => onSegmentClick?.(seg)}
+                  onKeyDown={e => e.key === 'Enter' && onSegmentClick?.(seg)}
+                  onMouseEnter={() => active && setHoveredId(seg.id)}
+                  onMouseLeave={() => setHoveredId(null)}
+                  style={{ transform: `translate(${tx}px, ${ty}px)`, transition: 'transform 0.15s' }}
                 >
-                  {seg.labelLines.map((line, lineIndex) => (
-                    <tspan
-                      key={`${seg.id}-${line}`}
-                      x={seg.lx}
-                      dy={lineIndex === 0 ? (seg.labelLines.length > 1 ? '-0.45em' : '0') : '1.05em'}
-                    >
-                      {line}
-                    </tspan>
-                  ))}
-                </text>
-              </g>
-            )
-          })}
+                  <path
+                    d={seg.path}
+                    fill={active ? `url(#grad-${seg.id})` : seg.dimColor}
+                    stroke="rgba(0,0,0,0.22)"
+                    strokeWidth="1.5"
+                    style={{
+                      transition: 'opacity .15s, filter .15s',
+                      filter: (revealed && !flashDone)
+                        ? `drop-shadow(0 0 ${12 * intensity}px ${seg.color}) brightness(${1 + 0.4 * intensity})`
+                        : hovered
+                          ? `drop-shadow(0 0 12px ${seg.color})`
+                          : isActive
+                            ? `drop-shadow(0 0 8px ${seg.color}99)`
+                            : 'none',
+                      opacity: hovered ? 0.88 : 1,
+                    }}
+                  />
+
+                  <text
+                    x={seg.lx} y={seg.ly}
+                    textAnchor="middle" dominantBaseline="middle"
+                    fill={active ? 'rgba(255,255,255,0.93)' : 'rgba(255,255,255,0.35)'}
+                    fontSize={seg.labelLines.length > 1 ? '8.4' : '9.2'}
+                    fontWeight="850"
+                    fontFamily="Manrope, system-ui, sans-serif"
+                    transform={`rotate(${seg.labelRotation} ${seg.lx} ${seg.ly})`}
+                    style={{ pointerEvents: 'none', userSelect: 'none', letterSpacing: 0 }}
+                  >
+                    {seg.labelLines.map((line, lineIndex) => (
+                      <tspan
+                        key={`${seg.id}-${line}`}
+                        x={seg.lx}
+                        dy={lineIndex === 0 ? (seg.labelLines.length > 1 ? '-0.45em' : '0') : '1.05em'}
+                      >
+                        {line}
+                      </tspan>
+                    ))}
+                  </text>
+                </g>
+              )
+            })}
+
+            {/* Loading arc */}
+            {loading && (
+              <circle
+                cx={CX} cy={CY}
+                r={loadingR}
+                fill="none"
+                stroke="var(--brand-orange)"
+                strokeWidth="5"
+                strokeDasharray={`${(loadingCirc * 0.13).toFixed(1)} ${(loadingCirc * 0.87).toFixed(1)}`}
+                strokeLinecap="round"
+                className="donut-loading-arc"
+              />
+            )}
+          </motion.g>
 
           {/* Clock in center */}
           <text
@@ -233,22 +265,8 @@ export default function DepartmentDonut({
           >
             {formatElapsed(elapsedSeconds ?? 0)}
           </text>
-
-          {/* Loading arc */}
-          {loading && (
-            <circle
-              cx={CX} cy={CY}
-              r={loadingR}
-              fill="none"
-              stroke="var(--brand-orange)"
-              strokeWidth="5"
-              strokeDasharray={`${(loadingCirc * 0.13).toFixed(1)} ${(loadingCirc * 0.87).toFixed(1)}`}
-              strokeLinecap="round"
-              className="donut-loading-arc"
-            />
-          )}
         </svg>
-      </motion.div>
+      </div>
       {(() => {
         const active = built.find(s => s.id === activeSegmentId || s.label === activeSegmentId) ?? built.find(s => s.count > 0)
         if (!active || active.count === 0) return null

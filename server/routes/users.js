@@ -244,6 +244,7 @@ router.put('/:id', verifyJWT, async (req, res) => {
     last_songs,
     zodiac_sign,
     fav_color,
+    pitch,
   } = req.body
   const normalizedAvatar = avatarUrl !== undefined ? avatarUrl : avatar_url
   const normalizedBadgeId = badgeId !== undefined ? badgeId : badge_id
@@ -285,6 +286,9 @@ router.put('/:id', verifyJWT, async (req, res) => {
   if (normalizedAvatar !== undefined && !isValidAvatarValue(normalizedAvatar)) {
     return res.status(400).json({ error: 'avatar_url должен быть data:image/jpeg|png|webp|gif (до 5MB) или http/https URL' })
   }
+  if (pitch !== undefined && pitch !== null && typeof pitch === 'string' && pitch.length > 900) {
+    return res.status(400).json({ error: 'pitch должен быть не длиннее 900 символов' })
+  }
   if (![about_short, work_details, current_interests, last_movies, last_books, last_songs].every(isValidLongText)) {
     return res.status(400).json({ error: `Текстовые поля анкеты должны быть не длиннее ${MAX_TEXT_LENGTH} символов` })
   }
@@ -319,7 +323,7 @@ router.put('/:id', verifyJWT, async (req, res) => {
       position !== undefined || birthday_day !== undefined || birthday_month !== undefined ||
       about_short !== undefined || work_details !== undefined || current_interests !== undefined ||
       last_movies !== undefined || last_books !== undefined || last_songs !== undefined ||
-      zodiac_sign !== undefined || fav_color !== undefined) {
+      zodiac_sign !== undefined || fav_color !== undefined || pitch !== undefined) {
     db.prepare(`
       UPDATE users SET
         name               = COALESCE(?, name),
@@ -342,6 +346,7 @@ router.put('/:id', verifyJWT, async (req, res) => {
         last_songs         = COALESCE(?, last_songs),
         zodiac_sign        = COALESCE(?, zodiac_sign),
         fav_color          = COALESCE(?, fav_color),
+        pitch              = COALESCE(?, pitch),
         onboarding_done    = CASE WHEN ? IS NOT NULL AND ? IS NOT NULL THEN 1 ELSE onboarding_done END
       WHERE id = ?
     `).run(
@@ -365,6 +370,7 @@ router.put('/:id', verifyJWT, async (req, res) => {
       nextText.last_songs ?? null,
       nextText.zodiac_sign ?? null,
       nextText.fav_color ?? null,
+      pitch !== undefined ? String(pitch).trim().slice(0, 900) : null,
       displayName || null, department ?? null,
       req.user.id
     )
@@ -405,7 +411,7 @@ router.put('/:id', verifyJWT, async (req, res) => {
       db.prepare(
         'UPDATE users SET pitch=?, badge_title=?, badge_emoji=?, badge_reason=? WHERE id=?'
       ).run(
-        String(final.pitch ?? '').slice(0, 500),
+        String(final.pitch ?? '').slice(0, 900),
         String(final.badge_title ?? '').slice(0, 100),
         String(final.badge_emoji ?? '').slice(0, 20),
         String(final.badge_reason ?? '').slice(0, 200),
@@ -445,9 +451,13 @@ router.post('/me/pitch', verifyJWT, async (req, res) => {
       ? 'Пол: мужской. Используй мужской род: "работаю", "занимался", "увлечён", "пришёл" и т.д.'
       : 'Пол не указан. Используй нейтральные формулировки без глаголов прошедшего времени с родом.'
 
-  const prompt = `Ты помогаешь сотруднику написать короткий питч о себе для знакомства с коллегами на корпоративном мероприятии компании «БСО Логистик».
+  const prompt = `Ты — опытный спичрайтер. Твоя задача — написать текст "Обо мне" от первого лица для сотрудника компании «БСО Логистик», который представится коллегам на внутреннем корпоративе.
 
-КОНТЕКСТ: это внутренний корпоратив, все уже пришли потому что компания позвала. Питч нужен чтобы быстро рассказать о себе и найти интересных людей — не для поиска работы, не для резюме, не для самопрезентации руководству. Тон — живой, человеческий, как будто рассказываешь соседу за столом.
+ТОН И СТИЛЬ:
+- Умеренно весёлый, живой, располагающий — не сухой офисный.
+- Профессиональный, но с долей уместного юмора или лёгкой самоиронии.
+- Текст должен звучать естественно при чтении вслух или на слайде.
+- Никакого канцелярита и штампов.
 
 ${genderHint}
 
@@ -456,20 +466,25 @@ ${genderHint}
 - Отдел: ${user.department || '—'}
 - Должность: ${user.position || '—'}
 - Стаж: ${expStr || '—'}
-- О себе: ${user.about_short || '—'}
-- Проекты / чем занимаюсь: ${user.work_details || '—'}
+- Суперсила / о себе: ${user.about_short || '—'}
+- Проекты / страсть в работе: ${user.work_details || '—'}
 - Сейчас увлечён(а): ${user.current_interests || '—'}
 - Интересы вне работы: ${hobbies.join(', ') || '—'}
 
-ПРАВИЛА:
-1. Начни с "Привет! Я [имя]." — только имя, без фамилии если она есть.
-2. 3-5 предложений. Коротко и по делу.
-3. Упомяни: кто ты в компании, что тебя по-настоящему зажигает (не должность, а суть), и одно личное — хобби или интерес — которое может стать поводом для разговора.
-4. Не пиши "я пришёл(а) сюда чтобы..." — все и так пришли на корпоратив.
-5. Не используй: «рад(а) познакомиться», «открыт(а) к сотрудничеству», «нацелен(а) на результат», «командный игрок».
-6. Согласуй род глаголов строго по полу из данных выше.
+СТРУКТУРА (4 части, строго):
+1. Приветствие и позиционирование — кто я и за что отвечаю (начни с "Привет! Я [только имя].")
+2. Рабочие качества через призму пользы или лёгкой шутки — не перечисление, а живая картинка
+3. Плавный переход к хобби — показать человека за пределами офиса
+4. Открытая концовка — зацепка для нетворкинга или повод подойти пообщаться
 
-Верни только текст питча. Без JSON, без markdown, без заголовков.`
+ТРЕБОВАНИЯ:
+- Объём: 3-4 абзаца, МИНИМУМ 600 символов (это обязательно, не сокращай).
+- Текст от первого лица ("Я...").
+- Не пиши "я пришёл(а) сюда чтобы..." — все и так пришли на корпоратив.
+- Запрещено: «рад(а) познакомиться», «открыт(а) к сотрудничеству», «нацелен(а) на результат», «командный игрок», «синергия», «эффективность».
+- Согласуй род глаголов строго по полу из данных выше.
+
+Верни только текст. Без JSON, без markdown, без заголовков.`
 
   try {
     const provider = llm.llm_provider || 'openai'
@@ -481,7 +496,7 @@ ${genderHint}
       const r = await fetch(url, {
         method: 'POST',
         headers: { 'x-api-key': llm.llm_api_key, 'anthropic-version': '2023-06-01', 'content-type': 'application/json' },
-        body: JSON.stringify({ model: llm.llm_model, max_tokens: 512, messages: [{ role: 'user', content: prompt }] }),
+        body: JSON.stringify({ model: llm.llm_model, max_tokens: 900, messages: [{ role: 'user', content: prompt }] }),
       })
       if (!r.ok) throw new Error(`Anthropic ${r.status}`)
       text = (await r.json()).content?.[0]?.text
@@ -492,7 +507,7 @@ ${genderHint}
       const r = await fetch(url, {
         method: 'POST',
         headers: { 'Authorization': `Bearer ${llm.llm_api_key}`, 'content-type': 'application/json' },
-        body: JSON.stringify({ model: llm.llm_model, max_tokens: 512, messages: [{ role: 'user', content: prompt }] }),
+        body: JSON.stringify({ model: llm.llm_model, max_tokens: 900, messages: [{ role: 'user', content: prompt }] }),
       })
       if (!r.ok) throw new Error(`${provider} ${r.status}`)
       text = (await r.json()).choices?.[0]?.message?.content

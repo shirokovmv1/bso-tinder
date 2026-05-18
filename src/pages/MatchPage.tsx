@@ -27,6 +27,8 @@ export default function MatchPage() {
   const [emptyMessage, setEmptyMessage] = useState('')
   const [pendingReaction, setPendingReaction] = useState<string | null>(null)
   const [elapsed, setElapsed] = useState(0)
+  const [matchRevealed, setMatchRevealed] = useState(false)
+  const [sentReactions, setSentReactions] = useState<Set<string>>(new Set())
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
   function stopTimer() {
@@ -59,6 +61,8 @@ export default function MatchPage() {
         new Promise<void>(r => setTimeout(r, 10_000)),
       ])
       setGroups(result.groups)
+      setMatchRevealed(false)
+      setTimeout(() => setMatchRevealed(true), 50)
       setEmptyMessage(result.emptyMessage)
       const firstGroup = result.groups[0]
       setSelectedDepartment(firstGroup?.department ?? null)
@@ -95,6 +99,7 @@ export default function MatchPage() {
     setPendingReaction(key)
     try {
       await api.sendReaction(match.user.id, reactionTypeId)
+      setSentReactions(prev => new Set([...prev, key]))
     } finally {
       setPendingReaction(null)
     }
@@ -143,6 +148,7 @@ export default function MatchPage() {
             loading={loading}
             elapsedSeconds={elapsed}
             activeSegmentId={selectedDepartment}
+            revealed={matchRevealed}
             onSegmentClick={(segment) => {
               if (segment.count <= 0) return
               setSelectedDepartment(segment.label)
@@ -199,6 +205,7 @@ export default function MatchPage() {
                   selected={selectedMatch?.user.id === match.user.id}
                   reactionTypes={reactionTypes}
                   pendingReaction={pendingReaction}
+                  sentReactions={sentReactions}
                   onSelect={() => setSelectedMatch(prev => prev?.user.id === match.user.id ? null : match)}
                   onReact={(reactionTypeId) => handleReaction(match, reactionTypeId)}
                 />
@@ -213,30 +220,26 @@ export default function MatchPage() {
   )
 }
 
-function MatchCard({ match, selected, reactionTypes, pendingReaction, onSelect, onReact }: {
+function MatchCard({ match, selected, reactionTypes, pendingReaction, sentReactions, onSelect, onReact }: {
   match: ApiMatchedUser
   selected: boolean
   reactionTypes: ApiReactionType[]
   pendingReaction: string | null
+  sentReactions: Set<string>
   onSelect: () => void
   onReact: (reactionTypeId: string) => void
 }) {
   const [aiLoading, setAiLoading] = useState(false)
-  const [aiPitch, setAiPitch] = useState<string | null>(null)
-  const [aiIcebreaker, setAiIcebreaker] = useState<string | null>(null)
+  const [aiCommon, setAiCommon] = useState<string | null>(null)
   const [aiError, setAiError] = useState('')
   const [copied, setCopied] = useState(false)
-
-  const icebreaker = aiIcebreaker ?? match.icebreaker
-  const pitch = aiPitch ?? match.pitch
 
   async function handleAiMatch() {
     setAiLoading(true)
     setAiError('')
     try {
       const result = await api.getAiMatch(match.user.id)
-      setAiPitch(result.description)
-      setAiIcebreaker(result.icebreaker)
+      setAiCommon(result.description)
     } catch {
       setAiError('AI недоступен, попробуйте позже')
     } finally {
@@ -245,7 +248,7 @@ function MatchCard({ match, selected, reactionTypes, pendingReaction, onSelect, 
   }
 
   function handleCopyPitch() {
-    navigator.clipboard.writeText(pitch).then(() => {
+    navigator.clipboard.writeText(match.pitch).then(() => {
       setCopied(true)
       setTimeout(() => setCopied(false), 2000)
     })
@@ -268,14 +271,14 @@ function MatchCard({ match, selected, reactionTypes, pendingReaction, onSelect, 
           <div className="mt-1 flex items-center gap-2">
             <span className="text-[12px] font-black text-orange-300">{match.score}%</span>
             <span className="text-[12px] font-bold text-white/55">{match.level.label}</span>
-            {(match.aiEnhanced || aiPitch) && <span className="text-[12px]" title="AI-улучшено">✨</span>}
+            {(match.aiEnhanced || aiCommon) && <span className="text-[12px]" title="AI-улучшено">✨</span>}
           </div>
         </div>
         <span className="text-white/30 text-2xl font-black shrink-0">{selected ? '⌃' : '›'}</span>
       </button>
 
       <div className="mt-3 text-[13px] font-semibold text-white/65 leading-relaxed">
-        {pitch}
+        {match.pitch}
       </div>
 
       <div className="mt-3 flex flex-wrap gap-2">
@@ -296,16 +299,16 @@ function MatchCard({ match, selected, reactionTypes, pendingReaction, onSelect, 
           >
             <div className="pt-4 mt-4 border-t border-white/10 space-y-3">
 
-              {/* Icebreaker */}
-              {!!icebreaker && (
+              {/* Повод для разговора (оригинальный, всегда) */}
+              {!!match.icebreaker && (
                 <div className="rounded-xl px-3 py-2 bg-orange-500/10 border border-orange-500/20">
                   <div className="text-[10px] font-black uppercase tracking-[0.12em] text-orange-300/70">Повод для разговора</div>
-                  <div className="text-[13px] font-semibold text-white/80 mt-0.5">{icebreaker}</div>
+                  <div className="text-[13px] font-semibold text-white/80 mt-0.5">{match.icebreaker}</div>
                 </div>
               )}
 
-              {/* Кнопка AI-мэтч */}
-              {!aiPitch && (
+              {/* Кнопка Полный мэтч / блок что общего */}
+              {!aiCommon ? (
                 <div>
                   <button
                     onClick={handleAiMatch}
@@ -316,6 +319,13 @@ function MatchCard({ match, selected, reactionTypes, pendingReaction, onSelect, 
                     <span>{aiLoading ? 'Анализируем...' : 'Полный мэтч'}</span>
                   </button>
                   {!!aiError && <p className="mt-1 text-[12px] text-red-400">{aiError}</p>}
+                </div>
+              ) : (
+                <div className="rounded-xl px-3 py-2 bg-white/5 border border-white/10">
+                  <div className="text-[10px] font-black uppercase tracking-[0.12em] text-white/40 mb-1">
+                    <span className="mr-1">✨</span>Что у вас общего
+                  </div>
+                  <p className="text-[13px] font-semibold text-white/80 leading-relaxed">{aiCommon}</p>
                 </div>
               )}
 
@@ -374,15 +384,20 @@ function MatchCard({ match, selected, reactionTypes, pendingReaction, onSelect, 
                   {reactionTypes.map(rt => {
                     const key = `${match.user.id}:${rt.id}`
                     const isPending = pendingReaction === key
+                    const isSent = sentReactions.has(key)
                     return (
                       <button
                         key={rt.id}
                         disabled={isPending}
                         onClick={() => onReact(rt.id)}
-                        className="flex items-center gap-1.5 px-3 py-2 rounded-full text-sm font-bold transition-all border glass-1 border-white/10 text-white/75 hover:bg-white/10 disabled:opacity-60"
+                        className={`flex items-center gap-1.5 px-3 py-2 rounded-full text-sm font-bold transition-all border ${
+                          isSent
+                            ? 'bg-orange-500/30 border-orange-500/60 text-orange-200'
+                            : 'glass-1 border-white/10 text-white/75 hover:bg-white/10'
+                        } disabled:opacity-60`}
                       >
                         <span>{rt.emoji}</span>
-                        <span className="text-[12px]">{isPending ? '...' : rt.label}</span>
+                        <span className="text-[12px]">{isPending ? '...' : isSent ? `${rt.label} ✓` : rt.label}</span>
                       </button>
                     )
                   })}
