@@ -56,12 +56,39 @@ router.delete('/users/:id', verifyAdmin, (req, res) => {
 
 // ── Логи ─────────────────────────────────────────────────────────────────────
 
-router.get('/logs', verifyAdmin, (req, res) => {
-  const logPath = path.join(__dirname, '..', 'logs', 'app.log')
-  if (!fs.existsSync(logPath)) return res.json({ lines: [] })
+const LOG_TAIL_BYTES = 200 * 1024
+const LOG_LINE_LIMIT = 100
 
-  const content = fs.readFileSync(logPath, 'utf8')
-  const lines = content.trim().split('\n').filter(Boolean).slice(-100)
+function readTail(filePath, maxBytes) {
+  const fd = fs.openSync(filePath, 'r')
+  try {
+    const size = fs.fstatSync(fd).size
+    const length = Math.min(size, maxBytes)
+    const start = size - length
+    const buf = Buffer.alloc(length)
+    fs.readSync(fd, buf, 0, length, start)
+    return buf.toString('utf8')
+  } finally {
+    fs.closeSync(fd)
+  }
+}
+
+router.get('/logs', verifyAdmin, (req, res) => {
+  const logsDir = path.join(__dirname, '..', 'logs')
+  if (!fs.existsSync(logsDir)) return res.json({ lines: [] })
+
+  const files = fs.readdirSync(logsDir)
+    .filter(name => /^app\d*\.log$/.test(name))
+    .map(name => {
+      const full = path.join(logsDir, name)
+      return { full, mtimeMs: fs.statSync(full).mtimeMs }
+    })
+    .sort((a, b) => a.mtimeMs - b.mtimeMs)
+
+  if (files.length === 0) return res.json({ lines: [] })
+
+  const combined = files.map(f => readTail(f.full, LOG_TAIL_BYTES)).join('\n')
+  const lines = combined.split('\n').map(l => l.trim()).filter(Boolean).slice(-LOG_LINE_LIMIT)
   res.json({ lines })
 })
 
