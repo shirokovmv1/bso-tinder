@@ -33,6 +33,7 @@ interface AppState {
   setDepartmentInput: (v: string) => void
   setPhotoUrl: (v: string) => void
   toggleHobby: (hobby: ApiHobby) => void
+  setSelectedHobbies: (hobbies: ApiHobby[]) => void
   setCurrentUser: (user: ApiUser) => void
 
   // Экшены — лента
@@ -110,6 +111,8 @@ export const useAppStore = create<AppState>()(
         })
       },
 
+      setSelectedHobbies: (hobbies) => set({ selectedHobbies: hobbies }),
+
       setCurrentUser: (user) => set({ currentUser: user, isAdmin: !!user.is_admin }),
       setEmployees: (list) => set({ employees: list }),
       setSearchQuery: (q) => set({ searchQuery: q }),
@@ -131,7 +134,6 @@ export const useAppStore = create<AppState>()(
         onboardingStep: s.onboardingStep,
         nameInput: s.nameInput,
         departmentInput: s.departmentInput,
-        selectedHobbies: s.selectedHobbies,
       }),
     }
   )

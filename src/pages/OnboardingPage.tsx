@@ -79,7 +79,8 @@ export default function OnboardingPage() {
   const [avatarError, setAvatarError] = useState('')
   const [notice, setNotice] = useState('')
 
-  const { photoUrl, selectedHobbies, setPhotoUrl, toggleHobby, currentUser, setCurrentUser, clearMatch } = useAppStore()
+  const { photoUrl, selectedHobbies, setPhotoUrl, toggleHobby, setSelectedHobbies, currentUser, setCurrentUser, clearMatch } = useAppStore()
+  const hydratedForUserId = useRef<string | null>(null)
   const [lastName, setLastName] = useState('')
   const [firstName, setFirstName] = useState('')
   const [middleName, setMiddleName] = useState('')
@@ -112,6 +113,10 @@ export default function OnboardingPage() {
 
   useEffect(() => {
     if (!currentUser) return
+    if (hydratedForUserId.current !== currentUser.id) {
+      setSelectedHobbies(currentUser.hobbies ?? [])
+      hydratedForUserId.current = currentUser.id
+    }
     setLastName(currentUser.last_name ?? '')
     setFirstName(currentUser.first_name ?? currentUser.name?.split(' ')[0] ?? '')
     setMiddleName(currentUser.middle_name ?? '')
