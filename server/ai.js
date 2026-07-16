@@ -259,6 +259,9 @@ ${userBlock(userB)}
   "icebreaker": "<вопрос или челлендж одному человеку>"
 }`
 
+  const controller = new AbortController()
+  const timer = setTimeout(() => controller.abort(), 30_000)
+
   try {
     let text
 
@@ -268,6 +271,7 @@ ${userBlock(userB)}
         method: 'POST',
         headers: { 'x-api-key': apiKey, 'anthropic-version': '2023-06-01', 'content-type': 'application/json' },
         body: JSON.stringify({ model, max_tokens: 512, messages: [{ role: 'user', content: prompt }] }),
+        signal: controller.signal,
       })
       if (!r.ok) throw new Error(`Anthropic ${r.status}`)
       text = (await r.json()).content?.[0]?.text
@@ -278,6 +282,7 @@ ${userBlock(userB)}
         method: 'POST',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }] }),
+        signal: controller.signal,
       })
       if (!r.ok) throw new Error(`Google ${r.status}`)
       text = (await r.json()).candidates?.[0]?.content?.parts?.[0]?.text
@@ -292,6 +297,7 @@ ${userBlock(userB)}
         method: 'POST',
         headers: { 'Authorization': `Bearer ${apiKey}`, 'content-type': 'application/json' },
         body: JSON.stringify({ model, max_tokens: 512, messages: [{ role: 'user', content: prompt }] }),
+        signal: controller.signal,
       })
       if (!r.ok) throw new Error(`${provider} ${r.status}`)
       text = (await r.json()).choices?.[0]?.message?.content
@@ -306,6 +312,8 @@ ${userBlock(userB)}
   } catch (e) {
     logger.warn('AI match failed', { error: e.message })
     return null
+  } finally {
+    clearTimeout(timer)
   }
 }
 
