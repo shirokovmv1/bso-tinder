@@ -15,7 +15,7 @@ environments:
   test:
     port: 8080
     containers: [bso-api-test, bso-nginx-test]
-    health_url: http://localhost:3002/api/health
+    health_url: http://localhost:8080/api/health
     rebuild_services: [bso-api-test]
     restart_services: [bso-nginx-test]
     frontend:
@@ -26,21 +26,23 @@ environments:
 
   prod:
     port: 80
-    containers: [bso-api-prod, bso-nginx-prod]
-    health_url: http://localhost:3001/api/health
+    containers: [bso-api-prod, ru-ingress-nginx]
+    health_url: http://localhost/api/health
     rebuild_services: [bso-api-prod]
-    restart_services: [bso-nginx-prod]
+    restart_services: []
     frontend:
-      env: { VITE_APP_ENV: production }
-      build_cmd: "npx vite build --outDir dist-bld --emptyOutDir"
-      build_output: dist-bld
-      target_dir: /var/www/bso-tinder/dist
+      env: { VITE_APP_ENV: prod }
+      build_cmd: "npx vite build --outDir dist-prod --emptyOutDir"
+      build_output: dist-prod
+      target_dir: /var/www/bso-tinder/dist-prod
 ```
 
 ## Особенности
 
 - **Node не установлен на хосте RU** — фронт собирается ЛОКАЛЬНО на Windows.
 - **Prod-деплой требует явного OK пользователя** перед запуском.
+- **Prod публикуется через общий `ru-ingress-nginx`** — отдельного `bso-nginx-prod` нет.
+- **GitHub Actions запускается только вручную** с выбором `test` или `prod`; для prod обязателен `confirm_prod=true`.
 - **SQLite WAL** — перед миграциями обязательно `backup_sqlite /var/www/bso-tinder/data/data.db`.
 
 ## Команды (PowerShell, локально)
@@ -68,12 +70,12 @@ ssh ru-server "source /opt/deploy/lib.sh && smoke_check /var/www/bso-tinder test
 
 ### Prod deploy
 
-То же, но: `VITE_APP_ENV=production`, `dist-bld`, `bso-api-prod` / `bso-nginx-prod`, target `/var/www/bso-tinder/dist`, smoke `prod`. **Требует явного OK.**
+То же, но: `VITE_APP_ENV=prod`, `dist-prod`, `bso-api-prod`, target `/var/www/bso-tinder/dist-prod`, smoke `prod`. `ru-ingress-nginx` не перезапускается. **Требует явного OK.**
 
 ### Backend only
 
 ```powershell
-ssh ru-server "cd /var/www/bso-tinder && git pull && docker compose up -d --build bso-api-prod bso-api-test"
+ssh ru-server "cd /var/www/bso-tinder && git pull --ff-only && docker compose up -d --build --no-deps bso-api-test"
 ssh ru-server "source /opt/deploy/lib.sh && smoke_check /var/www/bso-tinder test"
 ```
 
@@ -86,11 +88,11 @@ ssh ru-server "source /opt/deploy/lib.sh && smoke_check /var/www/bso-tinder test
   "environments": {
     "test": {
       "containers": ["bso-api-test", "bso-nginx-test"],
-      "health_url": "http://localhost:3002/api/health"
+      "health_url": "http://localhost:8080/api/health"
     },
     "prod": {
-      "containers": ["bso-api-prod", "bso-nginx-prod"],
-      "health_url": "http://localhost:3001/api/health"
+      "containers": ["bso-api-prod", "ru-ingress-nginx"],
+      "health_url": "http://localhost/api/health"
     }
   }
 }

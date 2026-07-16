@@ -1,9 +1,27 @@
-name: Deploy to Production
+name: Deploy BSO Tinder
 
 on:
-  push:
-    branches: [master]
   workflow_dispatch:
+    inputs:
+      environment:
+        description: Target environment
+        required: true
+        type: choice
+        options:
+          - test
+          - prod
+      confirm_prod:
+        description: Confirm production deploy
+        required: false
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: bso-tinder-deploy
+  cancel-in-progress: false
 
 jobs:
   deploy:
@@ -11,11 +29,22 @@ jobs:
     timeout-minutes: 15
 
     steps:
+      - name: Validate deploy request
+        run: |
+          if [ "${{ github.ref_name }}" != "master" ]; then
+            echo "Deploy must run from master"
+            exit 1
+          fi
+          if [ "${{ inputs.environment }}" = "prod" ] && [ "${{ inputs.confirm_prod }}" != "true" ]; then
+            echo "Production deploy requires confirm_prod=true"
+            exit 1
+          fi
+
       # ── 1. Checkout ──────────────────────────────────────────────────────────
       - name: Checkout code
         uses: actions/checkout@v4
 
-      # ── 2. Build frontend × 2 ───────────────────────────────────────────────
+      # ── 2. Build selected frontend ──────────────────────────────────────────
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
@@ -25,15 +54,13 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Build frontend (PROD)
-        run: npx vite build --outDir dist-prod
-        env:
-          VITE_APP_ENV: prod
-
-      - name: Build frontend (TEST)
-        run: npx vite build --outDir dist-test
-        env:
-          VITE_APP_ENV: test
+      - name: Build selected frontend
+        run: |
+          if [ "${{ inputs.environment }}" = "prod" ]; then
+            VITE_APP_ENV=prod npx vite build --outDir dist-prod --emptyOutDir
+          else
+            VITE_APP_ENV=test npx vite build --outDir dist-test --emptyOutDir
+          fi
 
       # ── 3. Configure SSH ─────────────────────────────────────────────────────
       - name: Configure SSH
@@ -44,39 +71,28 @@ jobs:
           ssh-keyscan -H ${{ secrets.SSH_HOST }} >> ~/.ssh/known_hosts 2>/dev/null
 
       # ── 4. Upload files to server ────────────────────────────────────────────
-      - name: Ensure rsync on server
+      - name: Verify server prerequisites
         run: |
           ssh -i ~/.ssh/deploy_key \
             -o StrictHostKeyChecking=no \
             ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }} \
-            "which rsync || apt-get install -y rsync -q"
+            "command -v rsync >/dev/null && test -d /var/www/bso-tinder/.git"
 
-      - name: Upload all changed files
+      - name: Upload selected frontend
         run: |
+          target="${{ inputs.environment }}"
           rsync -az --delete \
             -e "ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=no" \
-            dist-prod/ ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}:/var/www/bso-tinder/dist-prod/
-          rsync -az --delete \
-            -e "ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=no" \
-            dist-test/ ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}:/var/www/bso-tinder/dist-test/
-          rsync -az --delete \
-            --exclude='node_modules' \
-            --exclude='*.db' \
-            --exclude='logs/' \
-            -e "ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=no" \
-            server/ ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}:/var/www/bso-tinder/server/
-          rsync -az \
-            -e "ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=no" \
-            docker-compose.yml Dockerfile nginx.prod.conf nginx.test.conf \
-            ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}:/var/www/bso-tinder/
+            "dist-${target}/" \
+            "${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}:/var/www/bso-tinder/dist-${target}/"
 
-      # ── 5. Rebuild & restart containers ─────────────────────────────────────
-      - name: Rebuild Docker images and restart
+      # ── 5. Update code and restart selected environment ─────────────────────
+      - name: Deploy selected environment
         run: |
           ssh -i ~/.ssh/deploy_key \
             -o StrictHostKeyChecking=no \
             ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }} \
-            "cd /var/www/bso-tinder && docker compose build bso-api-prod bso-api-test && docker compose up -d"
+            "cd /var/www/bso-tinder && git fetch origin master && test \"\$(git rev-parse origin/master)\" = '${{ github.sha }}' && git merge --ff-only origin/master && if [ '${{ inputs.environment }}' = 'prod' ]; then docker compose up -d --build --no-deps bso-api-prod; else docker compose up -d --build --no-deps bso-api-test && docker compose up -d --force-recreate --no-deps bso-nginx-test; fi"
 
       # ── 6. Smoke test ────────────────────────────────────────────────────────
       - name: Smoke test
@@ -85,4 +101,4 @@ jobs:
           ssh -i ~/.ssh/deploy_key \
             -o StrictHostKeyChecking=no \
             ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }} \
-            "curl -sf http://localhost:80/api/health | grep -q 'ok' && echo 'PROD OK' && curl -sf http://localhost:8080/api/health | grep -q 'ok' && echo 'TEST OK'"
+            "if [ '${{ inputs.environment }}' = 'prod' ]; then curl -sf http://localhost/api/health | grep -q 'ok' && echo 'PROD OK'; else curl -sf http://localhost:8080/api/health | grep -q 'ok' && echo 'TEST OK'; fi"
