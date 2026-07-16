@@ -113,8 +113,8 @@ export default function OnboardingPage() {
 
   useEffect(() => {
     if (!currentUser) return
-    if (hydratedForUserId.current !== currentUser.id) {
-      setSelectedHobbies(currentUser.hobbies ?? [])
+    if (currentUser.hobbies !== undefined && hydratedForUserId.current !== currentUser.id) {
+      setSelectedHobbies(currentUser.hobbies)
       hydratedForUserId.current = currentUser.id
     }
     setLastName(currentUser.last_name ?? '')
