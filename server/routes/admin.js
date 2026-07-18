@@ -25,7 +25,7 @@ router.get('/users', verifyAdmin, (req, res) => {
   const users = db.prepare(`
     SELECT id, email, name, last_name, first_name, middle_name, position,
            department, birthday_day, birthday_month, is_admin, is_banned,
-           onboarding_done, created_at
+           avatar_url, gender, onboarding_done, created_at
     FROM users ORDER BY created_at DESC
   `).all()
   res.json(users)
@@ -731,6 +731,7 @@ router.delete('/reaction-types/:id', verifyAdmin, (req, res) => {
 // ════════════════════════════════════════════════════════════════════════════
 
 const LLM_KEYS = ['llm_provider', 'llm_api_key', 'llm_model', 'llm_base_url']
+const SUPPORTED_LLM_PROVIDERS = new Set(['anthropic', 'openai', 'google', 'custom'])
 
 // GET /api/admin/settings/llm
 router.get('/settings/llm', verifyAdmin, (req, res) => {
@@ -738,11 +739,19 @@ router.get('/settings/llm', verifyAdmin, (req, res) => {
   const settings = Object.fromEntries(
     rows.map(r => [r.key, r.key === 'llm_api_key' ? '••••••••' : r.value])
   )
+  if (settings.llm_provider && !SUPPORTED_LLM_PROVIDERS.has(settings.llm_provider)) {
+    settings.llm_provider = 'anthropic'
+    settings.llm_base_url = ''
+    settings.llm_model = ''
+  }
   res.json(settings)
 })
 
 // PUT /api/admin/settings/llm
 router.put('/settings/llm', verifyAdmin, (req, res) => {
+  if (req.body.llm_provider && !SUPPORTED_LLM_PROVIDERS.has(req.body.llm_provider)) {
+    return res.status(400).json({ error: 'Неподдерживаемый AI-провайдер' })
+  }
   const upsert = db.prepare(
     "INSERT OR REPLACE INTO settings (key, value, updated_at) VALUES (?, ?, datetime('now'))"
   )
@@ -766,6 +775,9 @@ router.get('/settings/llm/models', verifyAdmin, async (req, res) => {
 
   if (!apiKey || apiKey === '••••••••') {
     return res.status(400).json({ error: 'API-ключ не задан. Сохраните настройки.' })
+  }
+  if (!SUPPORTED_LLM_PROVIDERS.has(provider)) {
+    return res.status(400).json({ error: 'Неподдерживаемый AI-провайдер' })
   }
 
   try {
@@ -810,15 +822,6 @@ router.get('/settings/llm/models', verifyAdmin, async (req, res) => {
         .filter(id => id.startsWith('gemini'))
         .sort()
 
-    } else if (provider === 'cursor') {
-      // Cursor не поддерживает /v1/models — список фиксированный
-      models = [
-        'cursor-small',
-        'gpt-4o',
-        'gpt-4o-mini',
-        'claude-3-5-sonnet-20241022',
-        'claude-3-opus-20240229',
-      ]
     } else {
       // custom — OpenAI-совместимый endpoint
       const url = baseUrl ? `${baseUrl}/v1/models` : null

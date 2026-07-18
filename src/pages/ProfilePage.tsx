@@ -1,6 +1,7 @@
 import { useNavigate } from 'react-router-dom'
 import { useAppStore } from '@/store/useAppStore'
 import BottomNav from '@/components/ui/BottomNav'
+import UserAvatar from '@/components/ui/UserAvatar'
 
 const TONES: Record<string, string> = {
   team_player:    '#FF6B00',
@@ -37,11 +38,12 @@ export default function ProfilePage() {
         <div className="flex flex-col items-center gap-4 mb-8 fade-up" style={{ animationDelay: '60ms' }}>
           <div className="w-28 h-28 rounded-full overflow-hidden border-2 border-white/20 bg-graphite-700 grid place-items-center"
             style={{ background: `linear-gradient(135deg, ${badgeColor}66, ${badgeColor}33)` }}>
-            {currentUser.avatar_url && !currentUser.avatar_url.includes('dicebear.com') ? (
-              <img src={currentUser.avatar_url} alt="" className="w-full h-full object-cover" />
-            ) : (
-              <span className="text-white/60 text-sm font-medium">Фото</span>
-            )}
+            <UserAvatar
+              avatarUrl={currentUser.avatar_url}
+              gender={currentUser.gender}
+              alt={currentUser.name ?? 'Аватар пользователя'}
+              fallback={<span className="text-white/60 text-sm font-medium">Фото</span>}
+            />
           </div>
           <div className="text-center">
             <h2 className="text-[22px] font-black tracking-tight">{currentUser.name ?? '—'}</h2>

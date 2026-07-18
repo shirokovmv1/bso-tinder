@@ -1,5 +1,6 @@
 const express = require('express')
 const router = express.Router()
+const SUPPORTED_LLM_PROVIDERS = new Set(['anthropic', 'openai', 'google', 'custom'])
 const { v4: uuidv4 } = require('uuid')
 const { verifyJWT } = require('../middleware/auth')
 const db = require('../db')
@@ -488,6 +489,7 @@ ${genderHint}
 
   try {
     const provider = llm.llm_provider || 'openai'
+    if (!SUPPORTED_LLM_PROVIDERS.has(provider)) throw new Error('Неподдерживаемый AI-провайдер')
     const baseUrl = llm.llm_base_url?.replace(/\/$/, '')
     let text
 
@@ -503,7 +505,7 @@ ${genderHint}
     } else {
       const url = baseUrl
         ? `${baseUrl}/v1/chat/completions`
-        : provider === 'cursor' ? 'https://api.cursor.sh/v1/chat/completions' : 'https://api.openai.com/v1/chat/completions'
+        : 'https://api.openai.com/v1/chat/completions'
       const r = await fetch(url, {
         method: 'POST',
         headers: { 'Authorization': `Bearer ${llm.llm_api_key}`, 'content-type': 'application/json' },

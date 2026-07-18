@@ -248,7 +248,7 @@ export interface ApiMatchResult {
 }
 
 export interface ApiMatchedUser {
-  user: Pick<ApiUser, 'id' | 'name' | 'department' | 'position' | 'avatar_url' | 'badge_id' | 'badge_title' | 'badge_emoji' | 'pitch' | 'about_short' | 'work_details' | 'current_interests'>
+  user: Pick<ApiUser, 'id' | 'name' | 'department' | 'position' | 'avatar_url' | 'gender' | 'badge_id' | 'badge_title' | 'badge_emoji' | 'pitch' | 'about_short' | 'work_details' | 'current_interests'>
   score: number
   level: { id: string; label: string }
   pitch: string

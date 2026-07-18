@@ -278,6 +278,7 @@ router.post('/me', verifyJWT, (req, res) => {
           department: user.department,
           position: user.position,
           avatar_url: user.avatar_url,
+          gender: user.gender,
           badge_id: user.badge_id,
           badge_title: user.badge_title,
           badge_emoji: user.badge_emoji,

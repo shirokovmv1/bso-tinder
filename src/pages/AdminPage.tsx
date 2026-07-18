@@ -2,6 +2,7 @@ import { useEffect, useState, useCallback, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import { api, type ApiUser, type ApiDepartment, type ApiHobby, type ApiReactionType, type ApiLlmSettings, type ApiReactionStats, type ApiReactionStatEmoji } from '@/api/client'
+import UserAvatar from '@/components/ui/UserAvatar'
 
 type Tab = 'users' | 'logs' | 'smtp' | 'refs' | 'ai' | 'analytics'
 type RefsSection = 'departments' | 'hobbies' | 'reactions'
@@ -329,9 +330,12 @@ function UsersTab() {
             >
               <div className="w-9 h-9 rounded-full flex-shrink-0 flex items-center justify-center text-sm font-bold overflow-hidden"
                 style={{ background: 'rgba(255,107,0,0.2)', color: 'var(--brand-orange)' }}>
-                {user.avatar_url && !user.avatar_url.includes('dicebear.com')
-                  ? <img src={user.avatar_url} alt="" className="w-full h-full object-cover" />
-                  : (user.name?.[0] ?? user.email[0]).toUpperCase()}
+                <UserAvatar
+                  avatarUrl={user.avatar_url}
+                  gender={user.gender}
+                  alt={user.name ?? user.email}
+                  fallback={(user.name?.[0] ?? user.email[0]).toUpperCase()}
+                />
               </div>
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2">
@@ -939,7 +943,6 @@ const PROVIDER_DEFAULTS: Record<string, { label: string; baseUrlHint: string }> 
   anthropic: { label: 'Anthropic (Claude)',   baseUrlHint: 'http://151.245.137.147:9000' },
   openai:    { label: 'OpenAI (GPT)',         baseUrlHint: 'http://172.29.172.1:9004' },
   google:    { label: 'Google (Gemini)',      baseUrlHint: 'http://172.29.172.1:9002' },
-  cursor:    { label: 'Cursor API',           baseUrlHint: 'http://172.29.172.1:9003' },
 }
 
 function AiTab() {
@@ -956,9 +959,10 @@ function AiTab() {
 
   useEffect(() => {
     api.adminGetLlmSettings().then(s => {
-      if (s.llm_provider) setProvider(s.llm_provider)
-      if (s.llm_base_url) setBaseUrl(s.llm_base_url)
-      if (s.llm_model)    setModel(s.llm_model)
+      const savedProvider = s.llm_provider && PROVIDER_DEFAULTS[s.llm_provider] ? s.llm_provider : 'anthropic'
+      setProvider(savedProvider)
+      setBaseUrl(s.llm_base_url || PROVIDER_DEFAULTS[savedProvider].baseUrlHint)
+      setModel(s.llm_model || '')
     }).catch(() => {}).finally(() => setLoading(false))
   }, [])
 
@@ -1265,10 +1269,10 @@ export default function AdminPage() {
         </motion.div>
 
         <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.05 }}
-          className="glass-1 p-1 rounded-2xl flex gap-1 overflow-x-auto scrollbar-none">
+          className="glass-1 grid grid-cols-3 gap-1 rounded-2xl p-1 sm:flex sm:overflow-x-auto scrollbar-none">
           {TABS.map(tab => (
             <button key={tab.id} onClick={() => setActiveTab(tab.id)}
-              className="shrink-0 py-2 px-2.5 rounded-xl text-xs font-medium transition-all"
+              className="min-h-11 min-w-0 rounded-xl px-1 py-2 text-[11px] font-medium transition-all sm:shrink-0 sm:px-2.5 sm:text-xs"
               style={{
                 background: activeTab === tab.id ? 'rgba(255,107,0,0.22)' : 'transparent',
                 color: activeTab === tab.id ? 'var(--brand-orange)' : 'var(--fg-3)',

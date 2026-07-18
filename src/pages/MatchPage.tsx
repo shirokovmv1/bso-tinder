@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom'
 import { AnimatePresence, motion } from 'framer-motion'
 import { api, type ApiDepartment, type ApiDepartmentMatchGroup, type ApiMatchedUser, type ApiReactionType } from '@/api/client'
 import BottomNav from '@/components/ui/BottomNav'
+import UserAvatar from '@/components/ui/UserAvatar'
 import DepartmentDonut, { type DonutSegment } from '@/components/match/DepartmentDonut'
 
 const COLORS = ['#F59E7A', '#8EA4FF', '#6ED7B7', '#C4A7FF', '#F4A7C3', '#F2C879', '#7DD3C7', '#FCA5A5']
@@ -259,9 +260,13 @@ function MatchCard({ match, selected, reactionTypes, pendingReaction, sentReacti
       <button onClick={onSelect} className="w-full flex items-center gap-3 text-left">
         <div className="w-12 h-12 rounded-full grid place-items-center text-white font-black text-[18px] shrink-0 border border-white/15"
           style={{ background: 'linear-gradient(135deg,#FF8A33,#FF6B00)' }}>
-          {match.user.avatar_url && !match.user.avatar_url.includes('dicebear.com')
-            ? <img src={match.user.avatar_url} alt="" className="w-full h-full rounded-full object-cover" />
-            : initials(match.user.name)}
+          <UserAvatar
+            avatarUrl={match.user.avatar_url}
+            gender={match.user.gender}
+            alt={match.user.name ?? 'Аватар пользователя'}
+            className="h-full w-full rounded-full object-cover"
+            fallback={initials(match.user.name)}
+          />
         </div>
         <div className="flex-1 min-w-0">
           <div className="font-black text-[16px] truncate">{match.user.name}</div>

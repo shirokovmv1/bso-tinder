@@ -1,6 +1,7 @@
 import { useEffect, type MouseEvent } from 'react'
 import { motion } from 'framer-motion'
 import type { ApiReactionType, ApiUser } from '@/api/client'
+import UserAvatar from '@/components/ui/UserAvatar'
 import {
   BASE_COLORS,
   BOOK_GENRES,
@@ -126,16 +127,19 @@ export default function ProfilePanel({
 
         <div className="mb-5 flex items-start gap-4">
           <div className="h-20 w-20 shrink-0 overflow-hidden rounded-full border border-white/20">
-            {user.avatar_url && !user.avatar_url.includes('dicebear.com') ? (
-              <img src={user.avatar_url} alt={displayName} className="h-full w-full object-cover" />
-            ) : (
+            <UserAvatar
+              avatarUrl={user.avatar_url}
+              gender={user.gender}
+              alt={displayName}
+              fallback={
               <div
                 className="grid h-full w-full place-items-center text-[25px] font-black text-white"
                 style={{ background: toneFor(user.id) }}
               >
                 {getInitials(user)}
               </div>
-            )}
+              }
+            />
           </div>
 
           <div className="min-w-0 flex-1 pt-1">

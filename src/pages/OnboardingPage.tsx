@@ -4,6 +4,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import { api, type ApiHobby, type ApiDepartment } from '@/api/client'
 import { useAppStore } from '@/store/useAppStore'
+import UserAvatar, { isRealAvatarUrl } from '@/components/ui/UserAvatar'
 import { assignBadge, BADGES } from '@/data/badges'
 import { BASE_COLORS, BOOK_GENRES, FILM_GENRES, MUSIC_GENRES, ZODIAC_SIGNS } from '@/data/profileOptions'
 
@@ -46,16 +47,17 @@ function loadImageFromFile(file: File): Promise<HTMLImageElement> {
 
 async function buildCompactAvatarDataUrl(file: File) {
   const image = await loadImageFromFile(file)
-  const ratio = Math.min(MAX_AVATAR_SIDE / image.width, MAX_AVATAR_SIDE / image.height, 1)
-  const width = Math.max(1, Math.round(image.width * ratio))
-  const height = Math.max(1, Math.round(image.height * ratio))
+  const sourceSide = Math.min(image.width, image.height)
+  const sourceX = Math.round((image.width - sourceSide) / 2)
+  const sourceY = Math.round((image.height - sourceSide) / 2)
+  const outputSide = Math.max(1, Math.min(MAX_AVATAR_SIDE, sourceSide))
 
   const canvas = document.createElement('canvas')
-  canvas.width = width
-  canvas.height = height
+  canvas.width = outputSide
+  canvas.height = outputSide
   const ctx = canvas.getContext('2d')
   if (!ctx) throw new Error('Canvas недоступен')
-  ctx.drawImage(image, 0, 0, width, height)
+  ctx.drawImage(image, sourceX, sourceY, sourceSide, sourceSide, 0, 0, outputSide, outputSide)
 
   let quality = 0.82
   let dataUrl = canvas.toDataURL('image/jpeg', quality)
@@ -70,6 +72,7 @@ async function buildCompactAvatarDataUrl(file: File) {
 }
 
 export default function OnboardingPage() {
+  const navigate = useNavigate()
   const [searchParams] = useSearchParams()
   const [step, setStep] = useState<Step>(() => searchParams.get('step') === 'interests' ? 2 : 1)
   const [allHobbies, setAllHobbies] = useState<ApiHobby[]>([])
@@ -184,7 +187,7 @@ export default function OnboardingPage() {
         position: position.trim(),
         birthday_day: birthdayDay ? Number(birthdayDay) : null,
         birthday_month: birthdayMonth ? Number(birthdayMonth) : null,
-        avatar_url: photoUrl || (currentUser.avatar_url && !currentUser.avatar_url.includes('dicebear.com') ? currentUser.avatar_url : null),
+        avatar_url: photoUrl || (isRealAvatarUrl(currentUser.avatar_url) ? currentUser.avatar_url : null),
         badge_id: badge.id,
         hobbyIds: selectedHobbies.map(h => h.id),
         ...(gender ? { gender } : {}),
@@ -210,11 +213,10 @@ export default function OnboardingPage() {
     }
   }
 
-  const profileReady = !!(firstName.trim() && lastName.trim() && department)
+  const profileReady = !!(firstName.trim() && lastName.trim() && department && gender)
   const hobbiesReady = selectedHobbies.length >= MIN_HOBBIES
-  const hasRealPhoto = !!(photoUrl || (currentUser?.avatar_url && !currentUser.avatar_url.includes('dicebear.com')))
+  const hasRealPhoto = !!(photoUrl || isRealAvatarUrl(currentUser?.avatar_url))
   const step3Ready   = (
-    hasRealPhoto &&
     aboutShort.trim().length >= 3 &&
     workDetails.trim().length >= 3 &&
     currentInterestsText.trim().length >= 3 &&
@@ -234,6 +236,16 @@ export default function OnboardingPage() {
       <div className="mx-auto w-full max-w-md px-5 pt-12 pb-36 flex-1">
         <BrandHeader />
 
+        {!!currentUser?.onboarding_done && step === 1 && (
+          <button
+            type="button"
+            onClick={() => navigate('/profile')}
+            className="mb-5 min-h-11 rounded-xl px-3 text-[13px] font-bold text-white/60 transition-colors hover:text-white"
+          >
+            ← Назад в профиль
+          </button>
+        )}
+
         {notice && (
           <div className="mb-4 glass-1 rounded-2xl px-4 py-3 text-[12px] font-bold text-orange-200">
             {notice}
@@ -247,15 +259,19 @@ export default function OnboardingPage() {
               <p className="text-white/60 mt-3 text-[15px] font-medium">Проверьте данные и добавьте то, чего не хватает.</p>
 
               <div className="mt-7 flex items-center gap-4">
-                <label className="relative w-20 h-20 rounded-full glass-1 grid place-items-center cursor-pointer overflow-hidden press-shrink ease-spring transition-transform">
-                  {photoUrl || currentUser?.avatar_url ? (
-                    <img src={photoUrl || currentUser?.avatar_url || ''} alt="" className="absolute inset-0 w-full h-full object-cover" />
-                  ) : (
+                <label className="relative w-20 h-20 shrink-0 rounded-full glass-1 grid place-items-center cursor-pointer overflow-hidden press-shrink ease-spring transition-transform" aria-label="Загрузить фото">
+                  <UserAvatar
+                    avatarUrl={photoUrl || currentUser?.avatar_url}
+                    gender={gender}
+                    alt="Предпросмотр аватара"
+                    className="absolute inset-0 h-full w-full object-cover"
+                    fallback={
                     <>
                       <div className="text-orange-500 text-2xl font-black">＋</div>
-                      <div className="absolute bottom-0 left-0 right-0 text-center text-[9px] font-black uppercase tracking-[0.1em] text-white/55 pb-1.5">фото</div>
                     </>
-                  )}
+                    }
+                  />
+                  <div className="absolute inset-x-0 bottom-0 bg-black/55 py-1 text-center text-[8px] font-black uppercase tracking-[0.08em] text-white/85">Фото</div>
                   <input type="file" accept="image/*" className="hidden" onChange={onFile} />
                 </label>
                 <div className="flex-1 space-y-2 min-w-0">
@@ -413,8 +429,8 @@ export default function OnboardingPage() {
               <button onClick={() => setStep((step - 1) as Step)} className="w-full text-[13px] font-bold text-white/40">‹ Назад</button>
             )}
             {step === 3 && !hasRealPhoto && (
-              <p className="text-center text-[13px] font-bold text-orange-300/80">
-                📸 Загрузите фото — без него бейдж не выдаём
+              <p className="text-center text-[13px] font-bold text-white/55">
+                Без фото останется тотемный аватар
               </p>
             )}
             <button
@@ -739,9 +755,12 @@ function ProfilePreview({ onEdit }: { onEdit: () => void }) {
       <div className="glass-1 rounded-2xl p-4 flex items-center gap-4">
         <div className="w-16 h-16 rounded-full grid place-items-center text-white font-black text-[22px] shrink-0 border border-white/15 overflow-hidden"
           style={{ background: 'linear-gradient(135deg,#FF8A33,#FF6B00)' }}>
-          {currentUser.avatar_url && !currentUser.avatar_url.includes('dicebear.com')
-            ? <img src={currentUser.avatar_url} alt="" className="w-full h-full object-cover" />
-            : (displayName[0]?.toUpperCase() || '?')}
+          <UserAvatar
+            avatarUrl={currentUser.avatar_url}
+            gender={currentUser.gender}
+            alt={displayName}
+            fallback={displayName[0]?.toUpperCase() || '?'}
+          />
         </div>
         <div>
           <div className="font-black text-[18px]">{displayName}</div>

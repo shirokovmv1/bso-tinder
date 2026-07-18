@@ -1,5 +1,6 @@
 const db = require('./db')
 const logger = require('./logger')
+const SUPPORTED_LLM_PROVIDERS = new Set(['anthropic', 'openai', 'google', 'custom'])
 
 function getLlmConfig() {
   const rows = db.prepare("SELECT key, value FROM settings WHERE key LIKE 'llm_%'").all()
@@ -15,6 +16,10 @@ async function generatePitch({ department, experienceMonths, hobbies }) {
 
   if (!apiKey || !model) {
     logger.warn('AI pitch skipped: no LLM config')
+    return null
+  }
+  if (!SUPPORTED_LLM_PROVIDERS.has(provider)) {
+    logger.warn('AI pitch skipped: unsupported provider', { provider })
     return null
   }
 
@@ -73,12 +78,10 @@ async function generatePitch({ department, experienceMonths, hobbies }) {
       text = data.candidates?.[0]?.content?.parts?.[0]?.text
 
     } else {
-      // openai / cursor / custom
+      // openai / custom
       const url = baseUrl
         ? `${baseUrl}/v1/chat/completions`
-        : provider === 'cursor'
-          ? 'https://api.cursor.sh/v1/chat/completions'
-          : 'https://api.openai.com/v1/chat/completions'
+        : 'https://api.openai.com/v1/chat/completions'
 
       const r = await fetch(url, {
         method: 'POST',
@@ -214,6 +217,10 @@ async function generateMatch(userA, userB) {
   const baseUrl  = cfg.llm_base_url?.replace(/\/$/, '')
 
   if (!apiKey || !model) return null
+  if (!SUPPORTED_LLM_PROVIDERS.has(provider)) {
+    logger.warn('AI match skipped: unsupported provider', { provider })
+    return null
+  }
 
   function userBlock(u) {
     const name = [u.last_name, u.first_name].filter(Boolean).join(' ') || u.name || u.email
@@ -290,9 +297,7 @@ ${userBlock(userB)}
     } else {
       const url = baseUrl
         ? `${baseUrl}/v1/chat/completions`
-        : provider === 'cursor'
-          ? 'https://api.cursor.sh/v1/chat/completions'
-          : 'https://api.openai.com/v1/chat/completions'
+        : 'https://api.openai.com/v1/chat/completions'
       const r = await fetch(url, {
         method: 'POST',
         headers: { 'Authorization': `Bearer ${apiKey}`, 'content-type': 'application/json' },
