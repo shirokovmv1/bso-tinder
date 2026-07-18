@@ -16,6 +16,7 @@ import FeedPage       from '@/pages/FeedPage'
 import MatchPage      from '@/pages/MatchPage'
 import ProfilePage    from '@/pages/ProfilePage'
 import AdminPage      from '@/pages/AdminPage'
+import PwaUpdatePrompt from '@/components/ui/PwaUpdatePrompt'
 
 // ── Magic-Link interceptor ───────────────────────────────────────────────────
 // Срабатывает при наличии ?magic=<token> в URL — ДО рендера любой страницы.
@@ -124,6 +125,7 @@ function RootRedirect() {
 export default function App() {
   return (
     <BrowserRouter>
+      <PwaUpdatePrompt />
       <MagicLinkHandler>
         <UnauthorizedRedirectListener />
         <SessionBootstrap />
