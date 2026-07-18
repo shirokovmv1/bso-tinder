@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from 'react'
+import { useEffect, useState, useCallback, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import { api, type ApiUser, type ApiDepartment, type ApiHobby, type ApiReactionType, type ApiLlmSettings, type ApiReactionStats, type ApiReactionStatEmoji } from '@/api/client'
@@ -86,14 +86,16 @@ function InlineInput({ value, onChange, placeholder, className = '' }: {
   )
 }
 
-function ActionBtn({ onClick, disabled, title, children, danger }: {
-  onClick: () => void; disabled?: boolean; title?: string; children: React.ReactNode; danger?: boolean
+function ActionBtn({ onClick, disabled, title, ariaLabel, children, danger }: {
+  onClick: React.MouseEventHandler<HTMLButtonElement>; disabled?: boolean; title?: string; ariaLabel: string; children: React.ReactNode; danger?: boolean
 }) {
   return (
     <button
+      type="button"
       onClick={onClick}
       disabled={disabled}
       title={title}
+      aria-label={ariaLabel}
       className="p-1.5 rounded-lg transition-colors disabled:opacity-30"
       style={{
         background: danger ? 'rgba(255,60,60,0.08)' : 'rgba(255,255,255,0.06)',
@@ -141,6 +143,10 @@ function UsersTab() {
   const [exporting, setExporting] = useState(false)
   const [importing, setImporting] = useState(false)
   const [importErrors, setImportErrors] = useState<Array<{ line: number; error: string }>>([])
+  const deleteTriggerRef = useRef<HTMLButtonElement | null>(null)
+  const deleteDialogRef = useRef<HTMLDivElement | null>(null)
+  const deleteCancelRef = useRef<HTMLButtonElement | null>(null)
+  const userCountRef = useRef<HTMLSpanElement | null>(null)
 
   const showToast = (msg: string) => setToast(msg)
 
@@ -164,9 +170,47 @@ function UsersTab() {
     } catch (e: unknown) { showToast((e as Error).message) }
   }
 
-  const handleDeleteRequest = (user: ApiUser) => {
+  const closeDeleteDialog = useCallback(() => {
+    setDeleteConfirmUser(null)
+    window.requestAnimationFrame(() => deleteTriggerRef.current?.focus())
+  }, [])
+
+  const handleDeleteRequest = (user: ApiUser, event: React.MouseEvent<HTMLButtonElement>) => {
+    deleteTriggerRef.current = event.currentTarget
     setDeleteConfirmUser({ id: user.id, name: user.name ?? user.email })
   }
+
+  useEffect(() => {
+    if (!deleteConfirmUser) return
+
+    deleteCancelRef.current?.focus()
+    const handleDialogKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        event.preventDefault()
+        closeDeleteDialog()
+        return
+      }
+
+      if (event.key !== 'Tab') return
+      const focusable = Array.from(
+        deleteDialogRef.current?.querySelectorAll<HTMLElement>('button:not([disabled])') ?? []
+      )
+      if (!focusable.length) return
+
+      const first = focusable[0]
+      const last = focusable[focusable.length - 1]
+      if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault()
+        last.focus()
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault()
+        first.focus()
+      }
+    }
+
+    document.addEventListener('keydown', handleDialogKeyDown)
+    return () => document.removeEventListener('keydown', handleDialogKeyDown)
+  }, [closeDeleteDialog, deleteConfirmUser])
 
   const handleDeleteConfirm = async () => {
     if (!deleteConfirmUser) return
@@ -176,7 +220,10 @@ function UsersTab() {
       setUsers(prev => prev.filter(u => u.id !== targetUser.id))
       showToast('Пользователь удалён')
     } catch (e: unknown) { showToast((e as Error).message) }
-    finally { setDeleteConfirmUser(null) }
+    finally {
+      setDeleteConfirmUser(null)
+      window.requestAnimationFrame(() => userCountRef.current?.focus())
+    }
   }
 
   const handleCopyMagicLink = async (user: ApiUser) => {
@@ -224,7 +271,7 @@ function UsersTab() {
   return (
     <div className="flex flex-col gap-4">
       <div className="flex items-center justify-between gap-2">
-        <span className="text-sm" style={{ color: 'var(--fg-3)' }}>Всего: {users.length}</span>
+        <span ref={userCountRef} tabIndex={-1} className="text-sm" style={{ color: 'var(--fg-3)' }}>Всего: {users.length}</span>
         <div className="flex items-center gap-2">
           <label
             className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-opacity ${importing || loading ? 'opacity-50 pointer-events-none' : 'cursor-pointer'}`}
@@ -297,13 +344,13 @@ function UsersTab() {
                 </div>
               </div>
               <div className="flex items-center gap-1.5 flex-shrink-0">
-                <ActionBtn onClick={() => handleCopyMagicLink(user)} disabled={copyingId === user.id} title="Copy Magic Link">
+                <ActionBtn onClick={() => handleCopyMagicLink(user)} disabled={copyingId === user.id} title="Copy Magic Link" ariaLabel={`Скопировать Magic Link: ${user.name ?? user.email}`}>
                   {copyingId === user.id ? <IconCheck /> : <IconLink />}
                 </ActionBtn>
-                <ActionBtn onClick={() => handleBan(user)} disabled={!!user.is_admin} title={user.is_banned ? 'Разбанить' : 'Забанить'}>
+                <ActionBtn onClick={() => handleBan(user)} disabled={!!user.is_admin} title={user.is_banned ? 'Разбанить' : 'Забанить'} ariaLabel={`${user.is_banned ? 'Разбанить' : 'Забанить'}: ${user.name ?? user.email}`}>
                   <IconBan />
                 </ActionBtn>
-                <ActionBtn onClick={() => handleDeleteRequest(user)} disabled={!!user.is_admin} danger>
+                <ActionBtn onClick={event => handleDeleteRequest(user, event)} disabled={!!user.is_admin} ariaLabel={`Удалить: ${user.name ?? user.email}`} danger>
                   <IconTrash />
                 </ActionBtn>
               </div>
@@ -318,15 +365,20 @@ function UsersTab() {
           style={{ background: 'rgba(0,0,0,0.55)', backdropFilter: 'blur(2px)' }}
         >
           <div
+            ref={deleteDialogRef}
+            role="dialog"
+            aria-modal="true"
+            aria-describedby="delete-user-dialog-description"
             className="w-full max-w-sm rounded-2xl p-5 flex flex-col gap-4"
             style={{ background: '#171717', border: '1px solid rgba(255,255,255,0.10)' }}
           >
-            <p className="text-sm leading-relaxed" style={{ color: 'var(--fg-1)' }}>
+            <p id="delete-user-dialog-description" className="text-sm leading-relaxed" style={{ color: 'var(--fg-1)' }}>
               Удалить {deleteConfirmUser.name} навсегда? Это действие нельзя отменить.
             </p>
             <div className="flex justify-end gap-2">
               <button
-                onClick={() => setDeleteConfirmUser(null)}
+                ref={deleteCancelRef}
+                onClick={closeDeleteDialog}
                 className="px-3 py-2 rounded-lg text-xs font-medium"
                 style={{ background: 'rgba(255,255,255,0.08)', color: 'var(--fg-2)' }}
               >
@@ -434,8 +486,8 @@ function SmtpTab() {
     <form onSubmit={handleSave} className="flex flex-col gap-4">
       {SMTP_FIELDS.map(f => (
         <div key={f.key} className="flex flex-col gap-1.5">
-          <label className="text-xs font-medium" style={{ color: 'var(--fg-3)' }}>{f.label}</label>
-          <input type={f.type ?? 'text'} value={form[f.key] ?? ''} placeholder={f.placeholder}
+          <label htmlFor={`admin-${f.key}`} className="text-xs font-medium" style={{ color: 'var(--fg-3)' }}>{f.label}</label>
+          <input id={`admin-${f.key}`} type={f.type ?? 'text'} value={form[f.key] ?? ''} placeholder={f.placeholder}
             onChange={e => setForm(prev => ({ ...prev, [f.key]: e.target.value }))}
             className="w-full px-3 py-2.5 rounded-xl text-sm outline-none transition-colors"
             style={{ background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.10)', color: 'var(--fg-1)' }}
@@ -443,7 +495,7 @@ function SmtpTab() {
         </div>
       ))}
       <div className="flex items-center gap-3">
-        <button type="button" onClick={() => setSecure(v => !v)}
+        <button type="button" role="switch" aria-checked={secure} aria-label="SSL/TLS" onClick={() => setSecure(v => !v)}
           className="w-10 h-5 rounded-full transition-colors relative flex-shrink-0"
           style={{ background: secure ? 'var(--brand-orange)' : 'rgba(255,255,255,0.12)' }}>
           <span className="absolute top-0.5 w-4 h-4 rounded-full bg-white transition-transform"
@@ -558,10 +610,10 @@ function DepartmentsSection({ showToast }: { showToast: (m: string) => void }) {
                 {dept.name}
                 {!dept.is_active && <span className="ml-2 text-xs" style={{ color: '#ff6b6b' }}>деактивирован</span>}
               </span>
-              <ActionBtn onClick={() => { setEditId(dept.id); setEditName(dept.name) }} title="Изменить">
+              <ActionBtn onClick={() => { setEditId(dept.id); setEditName(dept.name) }} title="Изменить" ariaLabel={`Изменить отдел: ${dept.name}`}>
                 <IconEdit />
               </ActionBtn>
-              <ActionBtn onClick={() => handleDelete(dept)} danger title="Удалить">
+              <ActionBtn onClick={() => handleDelete(dept)} danger title="Удалить" ariaLabel={`Удалить отдел: ${dept.name}`}>
                 <IconTrash />
               </ActionBtn>
             </>
@@ -696,13 +748,13 @@ function HobbiesSection({ showToast }: { showToast: (m: string) => void }) {
                   </span>
                   <span className="text-xs" style={{ color: 'var(--fg-3)' }}>{open ? '▲' : '▼'}</span>
                   <div className="flex gap-1" onClick={e => e.stopPropagation()}>
-                    <ActionBtn onClick={() => { setAddingChildFor(addingChildFor === parent.id ? null : parent.id); setNewLabel(''); setNewEmoji('') }} title="Добавить хобби">
+                    <ActionBtn onClick={() => { setAddingChildFor(addingChildFor === parent.id ? null : parent.id); setNewLabel(''); setNewEmoji('') }} title="Добавить хобби" ariaLabel={`Добавить хобби в категорию: ${parent.label}`}>
                       <IconPlus />
                     </ActionBtn>
-                    <ActionBtn onClick={() => { setEditId(parent.id); setEditLabel(parent.label); setEditEmoji(parent.emoji ?? '') }} title="Изменить">
+                    <ActionBtn onClick={() => { setEditId(parent.id); setEditLabel(parent.label); setEditEmoji(parent.emoji ?? '') }} title="Изменить" ariaLabel={`Изменить категорию хобби: ${parent.label}`}>
                       <IconEdit />
                     </ActionBtn>
-                    <ActionBtn onClick={() => handleDelete(parent)} danger title="Удалить">
+                    <ActionBtn onClick={() => handleDelete(parent)} danger title="Удалить" ariaLabel={`Удалить категорию хобби: ${parent.label}`}>
                       <IconTrash />
                     </ActionBtn>
                   </div>
@@ -742,10 +794,10 @@ function HobbiesSection({ showToast }: { showToast: (m: string) => void }) {
                             {child.label}
                             {!child.is_active && <span className="ml-1" style={{ color: '#ff6b6b' }}>×</span>}
                           </span>
-                          <ActionBtn onClick={() => { setEditId(child.id); setEditLabel(child.label); setEditEmoji(child.emoji ?? '') }} title="Изменить">
+                          <ActionBtn onClick={() => { setEditId(child.id); setEditLabel(child.label); setEditEmoji(child.emoji ?? '') }} title="Изменить" ariaLabel={`Изменить хобби: ${child.label}`}>
                             <IconEdit />
                           </ActionBtn>
-                          <ActionBtn onClick={() => handleDelete(child)} danger title="Удалить">
+                          <ActionBtn onClick={() => handleDelete(child)} danger title="Удалить" ariaLabel={`Удалить хобби: ${child.label}`}>
                             <IconTrash />
                           </ActionBtn>
                         </>
@@ -829,7 +881,7 @@ function ReactionsSection({ showToast }: { showToast: (m: string) => void }) {
           style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.07)' }}>
           <span className="text-xl">{rt.emoji}</span>
           <span className="flex-1 text-sm font-medium" style={{ color: 'var(--fg-1)' }}>{rt.label}</span>
-          <ActionBtn onClick={() => handleDelete(rt)} danger title="Удалить">
+          <ActionBtn onClick={() => handleDelete(rt)} danger title="Удалить" ariaLabel={`Удалить реакцию: ${rt.label}`}>
             <IconTrash />
           </ActionBtn>
         </motion.div>
@@ -884,7 +936,7 @@ function RefsTab() {
 
 // ── вкладка "AI" ─────────────────────────────────────────────────────────────
 const PROVIDER_DEFAULTS: Record<string, { label: string; baseUrlHint: string }> = {
-  anthropic: { label: 'Anthropic (Claude)',   baseUrlHint: 'http://172.29.172.1:9000' },
+  anthropic: { label: 'Anthropic (Claude)',   baseUrlHint: 'http://151.245.137.147:9000' },
   openai:    { label: 'OpenAI (GPT)',         baseUrlHint: 'http://172.29.172.1:9004' },
   google:    { label: 'Google (Gemini)',      baseUrlHint: 'http://172.29.172.1:9002' },
   cursor:    { label: 'Cursor API',           baseUrlHint: 'http://172.29.172.1:9003' },
@@ -957,8 +1009,9 @@ function AiTab() {
   return (
     <div className="flex flex-col gap-4">
       <div>
-        <div style={labelStyle} className="mb-1">Провайдер</div>
+        <label htmlFor="admin-llm-provider" style={labelStyle} className="mb-1 block">Провайдер</label>
         <select
+          id="admin-llm-provider"
           value={provider}
           onChange={e => handleProviderChange(e.target.value)}
           className="w-full px-3 py-2 rounded-lg text-sm outline-none"
@@ -971,9 +1024,10 @@ function AiTab() {
       </div>
 
       <div>
-        <div style={labelStyle} className="mb-1">API ключ</div>
+        <label htmlFor="admin-llm-api-key" style={labelStyle} className="mb-1 block">API ключ</label>
         <div className="flex gap-2">
           <input
+            id="admin-llm-api-key"
             type={showKey ? 'text' : 'password'}
             value={apiKey}
             onChange={e => setApiKey(e.target.value)}
@@ -982,7 +1036,10 @@ function AiTab() {
             style={fieldStyle}
           />
           <button
+            type="button"
             onClick={() => setShowKey(s => !s)}
+            aria-label={showKey ? 'Скрыть API ключ' : 'Показать API ключ'}
+            aria-pressed={showKey}
             className="px-3 py-2 rounded-lg text-xs"
             style={{ ...fieldStyle, flexShrink: 0 }}
           >
@@ -992,10 +1049,11 @@ function AiTab() {
       </div>
 
       <div>
-        <div style={labelStyle} className="mb-1">
+        <label htmlFor="admin-llm-base-url" style={labelStyle} className="mb-1 block">
           Base URL <span style={{ color: 'var(--fg-3)', fontWeight: 400, textTransform: 'none' }}>(прокси, если нужен)</span>
-        </div>
+        </label>
         <input
+          id="admin-llm-base-url"
           type="text"
           value={baseUrl}
           onChange={e => setBaseUrl(e.target.value)}
@@ -1006,9 +1064,10 @@ function AiTab() {
       </div>
 
       <div>
-        <div style={labelStyle} className="mb-1">Модель</div>
+        <label htmlFor="admin-llm-model" style={labelStyle} className="mb-1 block">Модель</label>
         <div className="flex gap-2">
           <input
+            id="admin-llm-model"
             list="llm-models-list"
             value={model}
             onChange={e => setModel(e.target.value)}
@@ -1020,8 +1079,10 @@ function AiTab() {
             {models.map(m => <option key={m} value={m} />)}
           </datalist>
           <button
+            type="button"
             onClick={handleLoadModels}
             disabled={fetching}
+            aria-label="Загрузить список моделей"
             className="px-3 py-2 rounded-lg text-xs font-medium disabled:opacity-50 flex-shrink-0"
             style={{ background: 'rgba(255,255,255,0.08)', color: 'var(--fg-1)', border: '1px solid rgba(255,255,255,0.12)' }}
           >
